@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+env/
+ENV/
+.venv
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (if large)
+*.csv
+*.xlsx
+
+# scripts
+setup.sh
