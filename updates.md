@@ -1,0 +1,1 @@
+- this week need to do further things and setup more problem stuff
