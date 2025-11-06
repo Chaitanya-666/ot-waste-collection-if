@@ -734,15 +734,15 @@ class ALNS:
             score = 0.1  # Poor
 
         self.destroy_scores[destroy_op] += score
-        if repair_op_name in self.repair_scores:
-            self.repair_scores[repair_op_name] += score
+        if repair_op in self.repair_scores:
+            self.repair_scores[repair_op] += score
 
         # Notify the RepairOperatorManager (if available) so class-based
         # repair operators can adapt their internal performance measures.
         try:
             for op in getattr(self, "repair_manager", []).operators:
                 # use startswith to map short/legacy names to operator.name values
-                if op.name.startswith(repair_op_name):
+                if op.name.startswith(repair_op):
                     op.update_performance(score)
                     break
         except Exception:

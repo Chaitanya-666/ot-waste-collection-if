@@ -7,6 +7,7 @@ Main entry point
 from src.problem import ProblemInstance, Location
 from src.alns import ALNS
 
+
 def main():
     print("=== Waste Collection Route Optimization ===")
     print("Project: VRP with Intermediate Facilities using ALNS")
@@ -39,18 +40,21 @@ def main():
         problem.customers.append(c)
 
     print(f"Created problem: {problem}")
-    print(f\"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}\")
+    print(
+        f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
+    )
 
     # Initialize solver
     solver = ALNS(problem)
 
     # Run optimization (short smoke-run)
     solution = solver.run(max_iterations=200)
-    print(\"Optimization completed!\")
-    print(\"Best solution summary:\")
+    print("Optimization completed!")
+    print("Best solution summary:")
     print(solution)
     for idx, r in enumerate(solution.routes):
-        print(f\"Route {idx+1}: {r}\")
+        print(f"Route {idx + 1}: {r}")
+
 
 if __name__ == "__main__":
     main()
