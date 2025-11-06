@@ -85,7 +85,9 @@ class Solution:
         self.total_cost = 0.0
         self.total_distance = 0.0
         self.total_time = 0.0
-        self.unassigned_customers = set(problem_instance.customers)
+        # Keep unassigned customers as a set of customer IDs to avoid identity/mutation issues
+        # with Location objects across copy/deepcopy and different modules.
+        self.unassigned_customers = set(c.id for c in problem_instance.customers)
 
     def calculate_metrics(self):
         """Recalculate solution metrics"""
@@ -106,16 +108,20 @@ class Solution:
         if len(self.routes) > self.problem.number_of_vehicles:
             return False, "Too many vehicles used"
 
-        # Check customer coverage
-        served_customers = set()
+        # Check customer coverage (use IDs; unassigned_customers stores IDs)
+        served_ids = set()
         for route in self.routes:
             for node in route.nodes:
                 if node.type == "customer":
-                    if node in served_customers:
+                    if node.id in served_ids:
                         return False, f"Customer {node.id} served multiple times"
-                    served_customers.add(node)
+                    served_ids.add(node.id)
 
-        if served_customers != set(self.problem.customers) - self.unassigned_customers:
+        # Build expected served set from all problem customers minus unassigned IDs
+        all_customer_ids = set(c.id for c in self.problem.customers)
+        expected_served_ids = all_customer_ids - set(self.unassigned_customers)
+
+        if served_ids != expected_served_ids:
             return False, "Not all customers are served"
 
         # Check individual routes

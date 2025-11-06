@@ -2,17 +2,21 @@
 """
 Repair operators for VRP with Intermediate Facilities (VRP-IF).
 
-This module implements a small, clear set of repair operators for use in an
-ALNS algorithm:
+This module provides a cleaned, consistent implementation of several repair
+operators used by the ALNS solver:
+
  - GreedyInsertion
  - RegretInsertion (k-regret)
- - IFAwareRepair (tries to place IF visits when needed)
- - SavingsInsertion (Clarke-Wright style)
- - RepairOperatorManager (simple adaptive selection support)
+ - IFAwareRepair (ensures IF visits are placed to satisfy capacity)
+ - SavingsInsertion (simple Clarke-Wright style merge)
+ - RepairOperatorManager (simple adaptive manager)
 
-The implementation is intentionally conservative and defensive: it aims to be
-easy to read, integrate with the project's `Solution` and `Route` classes, and
-robust for typical small-to-medium problem instances.
+Notes:
+ - The project's Solution tracks `unassigned_customers` as a set of customer
+   IDs (integers). Repair operators operate with Location objects but update
+   the solution's `unassigned_customers` set using IDs.
+ - The implementations are defensive: feasibility checks and insertion caps are
+   employed to avoid pathological infinite loops.
 """
 
 from copy import deepcopy
@@ -32,11 +36,9 @@ class RepairOperator:
         self.usage_count = 0
 
     def apply(self, partial_solution: Solution) -> Solution:
-        """Apply the operator to a partial solution and return a completed solution."""
         raise NotImplementedError
 
     def update_performance(self, score: float) -> None:
-        """Update operator performance (ALNS will call this)."""
         self.performance_score += score
         self.usage_count += 1
 
@@ -51,7 +53,7 @@ class RepairOperator:
 # ----------------------
 def calculate_route_distance(route: Route, problem: ProblemInstance) -> float:
     """Compute total Euclidean distance of a route using the provided problem."""
-    if not route.nodes:
+    if not route.nodes or len(route.nodes) < 2:
         return 0.0
     total = 0.0
     for i in range(len(route.nodes) - 1):
@@ -63,12 +65,11 @@ def recalc_loads(route: Route) -> List[float]:
     """Recalculate cumulative loads after each node along a route.
 
     Rules:
-      - depot (any node.type != 'customer') does not add demand
+      - depot (node.type != 'customer') does not add demand
       - IF node (node.type == 'if') resets load to 0
     """
     loads: List[float] = []
     current_load = 0.0
-    # Ensure there is at least an entry per node
     for node in route.nodes:
         if node.type == "customer":
             current_load += float(node.demand)
@@ -91,89 +92,91 @@ def ensure_route_ends_with_depot(route: Route, problem: ProblemInstance) -> None
     route.loads = recalc_loads(route)
 
 
-def try_insert_if_before(route: Route, insert_pos: int, if_facility: Location) -> None:
-    """Insert IF facility at insert_pos (in-place)."""
-    route.nodes.insert(insert_pos, if_facility)
-    route.loads = recalc_loads(route)
-
-
 def find_nearest_if(
     problem: ProblemInstance, ref: Optional[Location]
 ) -> Optional[Location]:
-    """Return nearest IF facility to a reference location (or None if none).
-    If ref is None, use the depot as the reference. This is defensive: if the
-    depot is also missing, return the first IF (if any) or None.
-    """
+    """Return nearest IF facility to a reference location (or None if none)."""
     if not problem.intermediate_facilities:
         return None
-
-    # Use depot when ref is None
     if ref is None:
         ref = problem.depot
-
-    # If still no reference (very defensive), return the first IF available
     if ref is None:
+        # very defensive
         return (
             problem.intermediate_facilities[0]
             if problem.intermediate_facilities
             else None
         )
-
-    best = min(
+    return min(
         problem.intermediate_facilities,
         key=lambda ifn: problem.calculate_distance(ref, ifn),
     )
-    return best
 
 
 def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
     """Ensure route includes IF visits so vehicle capacity is never exceeded.
 
-    This function modifies the route.nodes list in-place by inserting IFs
-    greedily before the point where capacity would be exceeded. Returns True
-    if successful, False if infeasible (e.g., no IFs available when needed).
+    This function works on a copy of the nodes and writes back to route.nodes.
+    It returns True if it succeeded and False if infeasible (for example when a
+    single customer's demand exceeds vehicle capacity or an insertion cap is hit).
     """
     if not route.nodes:
         return False
-    # We work on a mutable copy of nodes to avoid repeated re-scan complexity;
-    # but we modify route.nodes in-place for caller to use.
+
+    # If any single customer demand > vehicle capacity, infeasible
+    for n in route.nodes:
+        if n.type == "customer" and float(n.demand) > problem.vehicle_capacity:
+            return False
+
     nodes = list(route.nodes)
-    loads: List[float] = []
     current_load = 0.0
     i = 0
+
+    # Safety cap to avoid pathological repeated insertions
+    insertion_count = 0
+    max_insertions = max(10, len(nodes) * 2)
+    last_insert_pos = -1
+
     while i < len(nodes):
         node = nodes[i]
         if node.type == "customer":
             current_load += float(node.demand)
             if current_load > problem.vehicle_capacity:
-                # Need to insert nearest IF before this customer
+                if insertion_count >= max_insertions:
+                    return False
                 nearest_if = find_nearest_if(
                     problem, nodes[i - 1] if i - 1 >= 0 else problem.depot
                 )
                 if nearest_if is None:
                     return False
+                # guard against inserting repeatedly at same index
+                if i == last_insert_pos:
+                    return False
                 nodes.insert(i, nearest_if)
+                insertion_count += 1
+                last_insert_pos = i
                 current_load = 0.0
-                # continue scanning after the inserted IF
+                # advance past IF so the customer is processed next
                 i += 1
                 continue
         elif node.type == "if":
             current_load = 0.0
-        loads.append(current_load)
+
         i += 1
-    # Ensure depots at start/end
-    if nodes[0] != problem.depot:
+
+    # Ensure route starts/ends with depot
+    if nodes and nodes[0] != problem.depot:
         nodes.insert(0, problem.depot)
-    if nodes[-1] != problem.depot:
+    if nodes and nodes[-1] != problem.depot:
         nodes.append(problem.depot)
-    # write back
+
     route.nodes = nodes
     route.loads = recalc_loads(route)
     return True
 
 
 def route_is_feasible(route: Route, problem: ProblemInstance) -> bool:
-    """Basic feasibility check: max load <= vehicle capacity (if nodes present)."""
+    """Check capacity feasibility (ignores IF placement beyond loads)."""
     if not route.nodes:
         return True
     loads = recalc_loads(route)
@@ -193,37 +196,33 @@ class GreedyInsertion(RepairOperator):
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
-        # Make sure routes use depot endpoints
+        # Ensure routes are normalized
         for r in sol.routes:
             ensure_route_ends_with_depot(r, problem)
 
-        # Build the unassigned customer list
-        unassigned = list(getattr(sol, "unassigned_customers", []))
+        # Build unassigned customer list as Location objects
+        unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
+        unassigned = [c for c in problem.customers if c.id in unassigned_ids]
 
-        # Heuristic ordering: larger demands first often helps
+        # Order important customers first (heuristic)
         unassigned.sort(key=lambda c: float(c.demand), reverse=True)
 
         while unassigned:
-            best = None  # tuple (cost_increase, customer, route_idx, pos)
-            for customer in unassigned:
-                # Try inserting into each existing route
+            best = None  # (delta_cost, customer, route_idx, pos)
+            for customer in list(unassigned):
+                # try existing routes
                 for ridx, route in enumerate(sol.routes):
-                    # feasible insertion positions are 1 .. len(route.nodes)-1
                     for pos in range(1, len(route.nodes)):
-                        # simulate
+                        # tentative insertion
                         route.nodes.insert(pos, customer)
                         route.loads = recalc_loads(route)
-                        # if capacity violation, skip
-                        if route_is_feasible(route, problem):
-                            # compute distance with insertion
+                        feasible = route_is_feasible(route, problem)
+                        if feasible:
                             d_with = calculate_route_distance(route, problem)
                             # compute distance without insertion
                             route.nodes.pop(pos)
                             route.loads = recalc_loads(route)
                             d_without = calculate_route_distance(route, problem)
-                            # restore insertion for evaluation consistency
-                            route.nodes.insert(pos, customer)
-                            route.loads = recalc_loads(route)
                             delta = d_with - d_without
                             if best is None or delta < best[0]:
                                 best = (delta, customer, ridx, pos)
@@ -231,12 +230,8 @@ class GreedyInsertion(RepairOperator):
                             # restore
                             route.nodes.pop(pos)
                             route.loads = recalc_loads(route)
-                            continue
-                        # restore if we didn't already
-                        route.nodes.pop(pos)
-                        route.loads = recalc_loads(route)
 
-                # Try inserting as a new route (customer alone between depots)
+                # try as new route
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 new_route.loads = recalc_loads(new_route)
@@ -246,31 +241,27 @@ class GreedyInsertion(RepairOperator):
                         best = (d_new, customer, None, None)
 
             if best is None:
-                # nothing feasible -> stop
+                # cannot place remaining customers feasibly
                 break
 
-            # perform the best insertion found
             _, customer, ridx, pos = best
             if ridx is None:
-                # add new route
-                new_route = Route()
-                new_route.nodes = [problem.depot, customer, problem.depot]
-                new_route.loads = recalc_loads(new_route)
-                sol.routes.append(new_route)
+                nr = Route()
+                nr.nodes = [problem.depot, customer, problem.depot]
+                nr.loads = recalc_loads(nr)
+                sol.routes.append(nr)
             else:
-                # insert into existing route
-                route = sol.routes[ridx]
-                route.nodes.insert(pos, customer)
-                route.loads = recalc_loads(route)
+                sol.routes[ridx].nodes.insert(pos, customer)
+                sol.routes[ridx].loads = recalc_loads(sol.routes[ridx])
 
-            # remove from unassigned
+            # update unassigned sets
             if customer in unassigned:
                 unassigned.remove(customer)
             if (
                 hasattr(sol, "unassigned_customers")
-                and customer in sol.unassigned_customers
+                and customer.id in sol.unassigned_customers
             ):
-                sol.unassigned_customers.remove(customer)
+                sol.unassigned_customers.remove(customer.id)
 
         sol.calculate_metrics()
         return sol
@@ -293,13 +284,14 @@ class RegretInsertion(RepairOperator):
         for r in sol.routes:
             ensure_route_ends_with_depot(r, problem)
 
-        unassigned = list(getattr(sol, "unassigned_customers", []))
-        # sort large first to stabilize
+        unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
+        unassigned = [c for c in problem.customers if c.id in unassigned_ids]
         unassigned.sort(key=lambda c: float(c.demand), reverse=True)
 
         while unassigned:
-            # For each customer compute best k insertion costs (route, pos)
-            candidate_info = []
+            candidate_info: List[
+                Tuple[float, Location, Tuple[float, Optional[int], Optional[int]]]
+            ] = []
             for customer in unassigned:
                 insertion_costs: List[Tuple[float, Optional[int], Optional[int]]] = []
                 # existing routes
@@ -308,19 +300,19 @@ class RegretInsertion(RepairOperator):
                         route.nodes.insert(pos, customer)
                         route.loads = recalc_loads(route)
                         feasible = route_is_feasible(route, problem)
-                        d_with = (
-                            calculate_route_distance(route, problem)
-                            if feasible
-                            else float("inf")
-                        )
                         route.nodes.pop(pos)
                         route.loads = recalc_loads(route)
                         if feasible:
-                            # cost increase relative to route without insertion:
-                            # compute d_without:
+                            # compute d_with by simulating insertion
+                            temp = Route()
+                            temp.nodes = route.nodes.copy()
+                            temp.nodes.insert(pos, customer)
+                            temp.loads = recalc_loads(temp)
+                            d_with = calculate_route_distance(temp, problem)
                             d_without = calculate_route_distance(route, problem)
                             insertion_costs.append((d_with - d_without, ridx, pos))
-                # new route option
+
+                # new single-customer route option
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 new_route.loads = recalc_loads(new_route)
@@ -330,9 +322,9 @@ class RegretInsertion(RepairOperator):
                     )
 
                 insertion_costs.sort(key=lambda x: x[0])
-                if len(insertion_costs) == 0:
+                if not insertion_costs:
                     continue
-                # compute regret value from best k
+
                 k_considered = min(self.k, len(insertion_costs))
                 best_cost = insertion_costs[0][0]
                 regret = sum(
@@ -348,12 +340,11 @@ class RegretInsertion(RepairOperator):
             _, chosen_customer, best_insertion = candidate_info[0]
             cost, ridx, pos = best_insertion
 
-            # perform insertion
             if ridx is None:
-                new_route = Route()
-                new_route.nodes = [problem.depot, chosen_customer, problem.depot]
-                new_route.loads = recalc_loads(new_route)
-                sol.routes.append(new_route)
+                nr = Route()
+                nr.nodes = [problem.depot, chosen_customer, problem.depot]
+                nr.loads = recalc_loads(nr)
+                sol.routes.append(nr)
             else:
                 sol.routes[ridx].nodes.insert(pos, chosen_customer)
                 sol.routes[ridx].loads = recalc_loads(sol.routes[ridx])
@@ -362,9 +353,9 @@ class RegretInsertion(RepairOperator):
                 unassigned.remove(chosen_customer)
             if (
                 hasattr(sol, "unassigned_customers")
-                and chosen_customer in sol.unassigned_customers
+                and chosen_customer.id in sol.unassigned_customers
             ):
-                sol.unassigned_customers.remove(chosen_customer)
+                sol.unassigned_customers.remove(chosen_customer.id)
 
         sol.calculate_metrics()
         return sol
@@ -383,50 +374,49 @@ class IFAwareRepair(RepairOperator):
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
-        # Normalize existing routes
         for r in sol.routes:
             ensure_route_ends_with_depot(r, problem)
 
-        unassigned = list(getattr(sol, "unassigned_customers", []))
-        # handle larger demands first
+        unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
+        unassigned = [c for c in problem.customers if c.id in unassigned_ids]
         unassigned.sort(key=lambda c: float(c.demand), reverse=True)
 
         while unassigned:
-            best = None  # (cost, customer, ridx, pos)
-            for customer in unassigned:
-                # try existing routes
+            best = None  # (delta, customer, ridx, pos)
+            for customer in list(unassigned):
+                # try existing routes with tentative insertion and IF enforcement
                 for ridx, route in enumerate(sol.routes):
                     for pos in range(1, len(route.nodes)):
-                        route.nodes.insert(pos, customer)
-                        # attempt to enforce IFs for this tentative route (locally)
-                        ok = enforce_if_visits(route, problem)
-                        if ok:
-                            d_with = calculate_route_distance(route, problem)
-                            # compute distance without the inserted customer:
-                            # temporarily remove and compute
-                            route.nodes.pop(pos)
-                            route.loads = recalc_loads(route)
-                            d_without = calculate_route_distance(route, problem)
-                            # restore insertion
-                            route.nodes.insert(pos, customer)
-                            route.loads = recalc_loads(route)
+                        # Save original state
+                        original_nodes = route.nodes.copy()
+                        original_loads = route.loads.copy()
+
+                        # Build tentative route and enforce IFs there
+                        tentative = Route()
+                        tentative.nodes = original_nodes.copy()
+                        tentative.nodes.insert(pos, customer)
+                        tentative.loads = recalc_loads(tentative)
+
+                        ok = enforce_if_visits(tentative, problem)
+                        if ok and route_is_feasible(tentative, problem):
+                            d_with = calculate_route_distance(tentative, problem)
+                            baseline = Route()
+                            baseline.nodes = original_nodes.copy()
+                            baseline.loads = recalc_loads(baseline)
+                            d_without = calculate_route_distance(baseline, problem)
                             delta = d_with - d_without
                             if best is None or delta < best[0]:
                                 best = (delta, customer, ridx, pos)
-                        # restore original (remove any IFs too)
-                        # remove IFs (simple approach: remove all IF nodes and rebuild loads)
-                        route.nodes = [
-                            n
-                            for n in route.nodes
-                            if n.type != "if" or n == problem.depot
-                        ]
-                        ensure_route_ends_with_depot(route, problem)
 
-                # try new route
+                        # restore original route (we did not modify sol.routes in-place)
+                        route.nodes = original_nodes
+                        route.loads = original_loads
+
+                # try new route (customer alone)
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 ok = enforce_if_visits(new_route, problem)
-                if ok:
+                if ok and route_is_feasible(new_route, problem):
                     d_new = calculate_route_distance(new_route, problem)
                     if best is None or d_new < best[0]:
                         best = (d_new, customer, None, None)
@@ -436,24 +426,23 @@ class IFAwareRepair(RepairOperator):
 
             _, customer, ridx, pos = best
             if ridx is None:
-                new_route = Route()
-                new_route.nodes = [problem.depot, customer, problem.depot]
-                enforce_if_visits(new_route, problem)
-                new_route.loads = recalc_loads(new_route)
-                sol.routes.append(new_route)
+                nr = Route()
+                nr.nodes = [problem.depot, customer, problem.depot]
+                enforce_if_visits(nr, problem)
+                nr.loads = recalc_loads(nr)
+                sol.routes.append(nr)
             else:
-                route = sol.routes[ridx]
-                route.nodes.insert(pos, customer)
-                enforce_if_visits(route, problem)
-                route.loads = recalc_loads(route)
+                sol.routes[ridx].nodes.insert(pos, customer)
+                enforce_if_visits(sol.routes[ridx], problem)
+                sol.routes[ridx].loads = recalc_loads(sol.routes[ridx])
 
             if customer in unassigned:
                 unassigned.remove(customer)
             if (
                 hasattr(sol, "unassigned_customers")
-                and customer in sol.unassigned_customers
+                and customer.id in sol.unassigned_customers
             ):
-                sol.unassigned_customers.remove(customer)
+                sol.unassigned_customers.remove(customer.id)
 
         sol.calculate_metrics()
         return sol
@@ -472,8 +461,10 @@ class SavingsInsertion(RepairOperator):
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
-        # Build initial single-customer routes for unassigned customers
-        unassigned = list(getattr(sol, "unassigned_customers", []))
+        unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
+        unassigned = [c for c in problem.customers if c.id in unassigned_ids]
+
+        # start with single-customer routes for each unassigned customer
         for customer in unassigned:
             r = Route()
             r.nodes = [problem.depot, customer, problem.depot]
@@ -481,21 +472,19 @@ class SavingsInsertion(RepairOperator):
             sol.routes.append(r)
             if (
                 hasattr(sol, "unassigned_customers")
-                and customer in sol.unassigned_customers
+                and customer.id in sol.unassigned_customers
             ):
-                sol.unassigned_customers.remove(customer)
+                sol.unassigned_customers.remove(customer.id)
 
-        # compute savings between all route pairs (only single-customer routes initially)
-        # savings = d(depot,c1) + d(depot,c2) - d(c1,c2)
+        # compute savings between route pairs
         savings_list: List[Tuple[float, int, int]] = []
         for i in range(len(sol.routes)):
             for j in range(i + 1, len(sol.routes)):
-                route_i = sol.routes[i]
-                route_j = sol.routes[j]
-                # customers are route_i.nodes[1] and route_j.nodes[1]
-                if len(route_i.nodes) >= 3 and len(route_j.nodes) >= 3:
-                    c1 = route_i.nodes[1]
-                    c2 = route_j.nodes[1]
+                ri = sol.routes[i]
+                rj = sol.routes[j]
+                if len(ri.nodes) >= 3 and len(rj.nodes) >= 3:
+                    c1 = ri.nodes[1]
+                    c2 = rj.nodes[1]
                     s = (
                         problem.calculate_distance(problem.depot, c1)
                         + problem.calculate_distance(problem.depot, c2)
@@ -503,33 +492,22 @@ class SavingsInsertion(RepairOperator):
                     )
                     savings_list.append((s, i, j))
 
-        # sort savings descending
         savings_list.sort(key=lambda x: x[0], reverse=True)
 
-        # Attempt merges
         for s, i, j in savings_list:
-            # indices may have shifted; ensure valid
-            if i >= len(sol.routes) or j >= len(sol.routes):
+            if i >= len(sol.routes) or j >= len(sol.routes) or i == j:
                 continue
-            if i == j:
-                continue
-            route_i = sol.routes[i]
-            route_j = sol.routes[j]
-            # Try merge: nodes = depot + route_i[1:-1] + route_j[1:-1] + depot
+            ri = sol.routes[i]
+            rj = sol.routes[j]
             merged = Route()
             merged.nodes = (
-                [problem.depot]
-                + route_i.nodes[1:-1]
-                + route_j.nodes[1:-1]
-                + [problem.depot]
+                [problem.depot] + ri.nodes[1:-1] + rj.nodes[1:-1] + [problem.depot]
             )
-            # enforce IFs if needed
             ok = enforce_if_visits(merged, problem)
             if not ok:
                 continue
             merged.loads = recalc_loads(merged)
             if route_is_feasible(merged, problem):
-                # Replace routes i and j with merged (remove higher index first to be safe)
                 hi, lo = max(i, j), min(i, j)
                 sol.routes[lo] = merged
                 sol.routes.pop(hi)
@@ -576,10 +554,8 @@ class RepairOperatorManager:
         scores = [max(0.0, op.average_score()) for op in self.operators]
         total = sum(scores)
         if total <= 0:
-            # reset to uniform
             self.weights = [1.0 for _ in self.operators]
             return
-        # update weights using simple blending
         for i, score in enumerate(scores):
             normalized = score / total
             self.weights[i] = (1.0 - self.reaction) * self.weights[

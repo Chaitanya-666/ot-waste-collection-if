@@ -173,8 +173,20 @@ class ALNS:
             route.nodes.append(self.problem.depot)
             route.loads.append(0)
 
-        # Calculate total cost
+        # Update unassigned_customers on the solution object so repairs know what to insert.
+        # Build served customer set
+        served_customers = set()
+        for route in solution.routes:
+            for node in route.nodes:
+                if getattr(node, "type", None) == "customer":
+                    served_customers.add(node)
+
+        # Keep unassigned as a set of Location objects (those not present in any route)
+        solution.unassigned_customers = set(self.problem.customers) - served_customers
+
+        # Calculate total cost (and keep distance field consistent)
         solution.total_cost = self._calculate_total_cost(solution)
+        solution.total_distance = solution.total_cost
 
         return solution
 
