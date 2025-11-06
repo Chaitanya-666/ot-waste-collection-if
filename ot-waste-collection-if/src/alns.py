@@ -87,12 +87,20 @@ class ALNS:
             # Repair phase
             new_solution = self._repair(partial_solution, repair_op)
 
-            # Acceptance criterion
-            if self._accept_solution(new_solution):
+            # Acceptance criterion: accept only feasible solutions (reject infeasible)
+            # We require the candidate solution to be feasible before considering acceptance.
+            if (
+                new_solution is not None
+                and new_solution.is_feasible()[0]
+                and self._accept_solution(new_solution)
+            ):
                 self.current_solution = new_solution
 
-                # Update best solution
-                if new_solution.total_cost < self.best_solution.total_cost:
+                # Update best solution only if the new solution is feasible and strictly better
+                if (
+                    new_solution.is_feasible()[0]
+                    and new_solution.total_cost < self.best_solution.total_cost
+                ):
                     self.best_solution = new_solution.copy()
                     print(
                         f"New best solution found at iteration {iteration}: {new_solution.total_cost:.2f}"

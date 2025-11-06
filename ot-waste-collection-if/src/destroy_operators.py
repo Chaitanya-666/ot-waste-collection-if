@@ -52,8 +52,15 @@ class RandomRemoval(DestroyOperator):
 
         if len(all_customers) <= removal_count:
             # Remove all customers if requested
+            removed_customers = []
             for route, customer in all_customers:
+                removed_customers.append(customer)
                 route.nodes.remove(customer)
+            # Mark removed customers as unassigned
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
             return self._clean_solution(partial_solution)
 
         # Randomly select customers to remove
@@ -61,8 +68,16 @@ class RandomRemoval(DestroyOperator):
             all_customers, min(removal_count, len(all_customers))
         )
 
+        removed_customers = []
         for route, customer in customers_to_remove:
+            removed_customers.append(customer)
             route.nodes.remove(customer)
+
+        # Mark removed customers as unassigned on the partial solution
+        if not hasattr(partial_solution, "unassigned_customers"):
+            partial_solution.unassigned_customers = set()
+        for cust in removed_customers:
+            partial_solution.unassigned_customers.add(cust)
 
         return self._clean_solution(partial_solution)
 
@@ -112,15 +127,33 @@ class WorstRemoval(DestroyOperator):
 
         if len(customer_costs) <= removal_count:
             # Remove all customers
+            removed_customers = []
             for route, node_idx, _ in customer_costs:
-                del route.nodes[node_idx]
+                # collect node before deletion
+                if 0 <= node_idx < len(route.nodes):
+                    removed_customers.append(route.nodes[node_idx])
+                    del route.nodes[node_idx]
+            # mark removed customers as unassigned
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
             return self._clean_solution(partial_solution)
 
         # Sort by marginal cost and remove worst ones
         customer_costs.sort(key=lambda x: x[2], reverse=True)
 
+        removed_customers = []
         for route, node_idx, _ in customer_costs[:removal_count]:
-            del route.nodes[node_idx]
+            if 0 <= node_idx < len(route.nodes):
+                removed_customers.append(route.nodes[node_idx])
+                del route.nodes[node_idx]
+
+        # mark removed customers as unassigned
+        if not hasattr(partial_solution, "unassigned_customers"):
+            partial_solution.unassigned_customers = set()
+        for cust in removed_customers:
+            partial_solution.unassigned_customers.add(cust)
 
         return self._clean_solution(partial_solution)
 
@@ -169,7 +202,7 @@ class WorstRemoval(DestroyOperator):
 
 
 class ShawRemoval(DestroyOperator):
-    """Remove similar customers based on proximity and demand similarity"""
+    """Remove similar customers based on proximity and demand"""
 
     def __init__(self):
         super().__init__("shaw_removal")
@@ -187,8 +220,16 @@ class ShawRemoval(DestroyOperator):
 
         if len(all_customers) <= removal_count:
             # Remove all customers
+            removed_customers = []
             for route, node_idx, _ in all_customers:
-                del route.nodes[node_idx]
+                if 0 <= node_idx < len(route.nodes):
+                    removed_customers.append(route.nodes[node_idx])
+                    del route.nodes[node_idx]
+            # mark removed as unassigned
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
             return self._clean_solution(partial_solution)
 
         # Select random seed customer
@@ -206,15 +247,24 @@ class ShawRemoval(DestroyOperator):
                     )
                     similarities.append((route, node_idx, similarity))
 
-        # Sort by similarity and remove most similar ones
+        # Sort by similarity and remove most similar
         similarities.sort(key=lambda x: x[2], reverse=True)
 
+        removed_customers = []
         removed_count = 0
         for route, node_idx, similarity in similarities:
             if removed_count >= removal_count:
                 break
-            del route.nodes[node_idx]
-            removed_count += 1
+            if 0 <= node_idx < len(route.nodes):
+                removed_customers.append(route.nodes[node_idx])
+                del route.nodes[node_idx]
+                removed_count += 1
+
+        # mark removed as unassigned
+        if not hasattr(partial_solution, "unassigned_customers"):
+            partial_solution.unassigned_customers = set()
+        for cust in removed_customers:
+            partial_solution.unassigned_customers.add(cust)
 
         return self._clean_solution(partial_solution)
 
@@ -269,7 +319,17 @@ class RouteRemoval(DestroyOperator):
 
         if len(partial_solution.routes) <= removal_count:
             # Remove all routes
+            # collect customers from all routes as unassigned
+            removed_customers = []
+            for r in partial_solution.routes:
+                for n in r.nodes:
+                    if n.type == "customer":
+                        removed_customers.append(n)
             partial_solution.routes = []
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
             return partial_solution
 
         # Select random routes to remove
@@ -277,8 +337,17 @@ class RouteRemoval(DestroyOperator):
             partial_solution.routes, min(removal_count, len(partial_solution.routes))
         )
 
+        removed_customers = []
         for route in routes_to_remove:
+            for n in route.nodes:
+                if n.type == "customer":
+                    removed_customers.append(n)
             partial_solution.routes.remove(route)
+
+        if not hasattr(partial_solution, "unassigned_customers"):
+            partial_solution.unassigned_customers = set()
+        for cust in removed_customers:
+            partial_solution.unassigned_customers.add(cust)
 
         return partial_solution
 
@@ -302,8 +371,16 @@ class RelatedRemoval(DestroyOperator):
 
         if len(all_customers) <= removal_count:
             # Remove all customers
+            removed_customers = []
             for route, node_idx, _ in all_customers:
-                del route.nodes[node_idx]
+                if 0 <= node_idx < len(route.nodes):
+                    removed_customers.append(route.nodes[node_idx])
+                    del route.nodes[node_idx]
+            # record unassigned
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
             return self._clean_solution(partial_solution)
 
         # Find clusters of related customers
@@ -314,8 +391,16 @@ class RelatedRemoval(DestroyOperator):
             largest_cluster = max(clusters, key=len)
             customers_to_remove = largest_cluster[:removal_count]
 
+            removed_customers = []
             for route, node_idx, _ in customers_to_remove:
-                del route.nodes[node_idx]
+                if 0 <= node_idx < len(route.nodes):
+                    removed_customers.append(route.nodes[node_idx])
+                    del route.nodes[node_idx]
+
+            if not hasattr(partial_solution, "unassigned_customers"):
+                partial_solution.unassigned_customers = set()
+            for cust in removed_customers:
+                partial_solution.unassigned_customers.add(cust)
 
         return self._clean_solution(partial_solution)
 
