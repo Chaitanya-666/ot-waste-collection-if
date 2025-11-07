@@ -136,57 +136,101 @@ class ALNS:
         return self.best_solution
 
     def _generate_initial_solution(self) -> Solution:
-        """Generate initial feasible solution using construction heuristics"""
+        """Generate initial feasible solution using a simple nearest-neighbour construction.
+
+        This method builds routes incrementally and ensures:
+         - each route starts and ends at the depot
+         - per-route loads are respected (no route will have load > vehicle_capacity)
+         - `solution.unassigned_customers` is a set of customer IDs not yet assigned
+        """
         solution = Solution(self.problem)
 
-        # Simple nearest neighbor construction
-        unassigned_customers = self.problem.customers.copy()
+        # Remaining customers (Location objects)
+        remaining = [c for c in self.problem.customers]
+
+        # Start with an empty route
+        current_route = self._create_empty_route()
+        solution.routes.append(current_route)
         current_location = self.problem.depot
 
-        while unassigned_customers:
-            # Find nearest customer
+        # Greedy nearest insertion while respecting capacity: if current route cannot accept
+        # the nearest customer, start a new route.
+        while remaining:
+            # choose nearest customer to the current location
             nearest_customer = min(
-                unassigned_customers,
+                remaining,
                 key=lambda c: self.problem.calculate_distance(current_location, c),
             )
 
-            # Create new route if needed
+            # compute current load on route
+            cur_load = sum(
+                getattr(node, "demand", 0)
+                for node in current_route.nodes
+                if getattr(node, "type", None) == "customer"
+            )
+
+            # if adding nearest_customer would exceed capacity, close current route and start a new one
             if (
-                not solution.routes
-                or self._get_route_load(solution.routes[-1])
-                >= self.problem.vehicle_capacity
+                cur_load + float(getattr(nearest_customer, "demand", 0))
+                > self.problem.vehicle_capacity
             ):
-                new_route = self._create_empty_route()
-                solution.routes.append(new_route)
+                # ensure current route ends at depot
+                if (
+                    not current_route.nodes
+                    or current_route.nodes[-1] != self.problem.depot
+                ):
+                    current_route.nodes.append(self.problem.depot)
+                current_route.calculate_metrics(self.problem)
 
-            # Add customer to current route
-            current_route = solution.routes[-1]
-            current_route.nodes.append(nearest_customer)
-            current_route.loads.append(self._get_route_load(current_route))
+                # start a fresh route
+                current_route = self._create_empty_route()
+                solution.routes.append(current_route)
+                current_location = self.problem.depot
+                continue
 
-            # Remove from unassigned
-            unassigned_customers.remove(nearest_customer)
+            # ensure route has an end depot to insert before; create if missing
+            if not current_route.nodes or current_route.nodes[-1] != self.problem.depot:
+                # if route only has starting depot, append end depot so we can insert before it
+                current_route.nodes.append(self.problem.depot)
+
+            # insert customer before the terminal depot
+            insert_pos = len(current_route.nodes) - 1
+            current_route.nodes.insert(insert_pos, nearest_customer)
+            # recalc route metrics
+            current_route.calculate_metrics(self.problem)
+
+            # remove from remaining and advance current location
+            remaining.remove(nearest_customer)
             current_location = nearest_customer
 
-        # Add depot at end of each route
+        # Finalize all routes: ensure they start and end with depot and calculate metrics
         for route in solution.routes:
-            route.nodes.append(self.problem.depot)
-            route.loads.append(0)
+            if not route.nodes:
+                route.nodes = [self.problem.depot, self.problem.depot]
+            if route.nodes[0] != self.problem.depot:
+                route.nodes.insert(0, self.problem.depot)
+            if route.nodes[-1] != self.problem.depot:
+                route.nodes.append(self.problem.depot)
+            route.calculate_metrics(self.problem)
 
-        # Update unassigned_customers on the solution object so repairs know what to insert.
-        # Build served customer set
-        served_customers = set()
+        # Build set of served customer IDs and set unassigned_customers as IDs
+        served_ids = set()
         for route in solution.routes:
             for node in route.nodes:
                 if getattr(node, "type", None) == "customer":
-                    served_customers.add(node)
+                    served_ids.add(node.id)
 
-        # Keep unassigned as a set of Location objects (those not present in any route)
-        solution.unassigned_customers = set(self.problem.customers) - served_customers
+        all_ids = set(c.id for c in self.problem.customers)
+        solution.unassigned_customers = all_ids - served_ids
 
-        # Calculate total cost (and keep distance field consistent)
-        solution.total_cost = self._calculate_total_cost(solution)
-        solution.total_distance = solution.total_cost
+        # Compute aggregated metrics for the solution
+        solution.total_distance = sum(
+            getattr(r, "total_distance", 0.0) for r in solution.routes
+        )
+        solution.total_time = sum(
+            getattr(r, "total_time", 0.0) for r in solution.routes
+        )
+        solution.total_cost = solution.total_distance
 
         return solution
 

@@ -108,8 +108,12 @@ class DataGenerator:
             customer.service_time = service_time
             problem.customers.append(customer)
 
-        # Calculate distance matrix
-        problem.calculate_distance_matrix()
+        # Calculate distance matrix (optional - some contexts may not need or support it)
+        try:
+            problem.calculate_distance_matrix()
+        except Exception:
+            # If the method is unavailable or fails, continue without raising so demo code can proceed.
+            pass
 
         return problem
 

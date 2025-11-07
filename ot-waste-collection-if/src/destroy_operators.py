@@ -92,14 +92,18 @@ class RandomRemoval(DestroyOperator):
 
         return solution
 
-    def _recalculate_loads(self, route: Route) -> List[int]:
-        """Recalculate cumulative loads for a route"""
-        loads = [0]
-        current_load = 0
+    def _recalculate_loads(self, route: Route) -> List[float]:
+        """Recalculate cumulative loads for a route (floats).
+
+        Use floats for loads so downstream code that computes distances/time
+        and merges loads remains consistent with other modules that use floats.
+        """
+        loads: List[float] = [0.0]
+        current_load: float = 0.0
 
         for node in route.nodes[1:]:  # Skip depot
-            if node.type == "customer":
-                current_load += node.demand
+            if getattr(node, "type", None) == "customer":
+                current_load += float(getattr(node, "demand", 0.0))
             loads.append(current_load)
 
         return loads
@@ -188,14 +192,18 @@ class WorstRemoval(DestroyOperator):
 
         return solution
 
-    def _recalculate_loads(self, route: Route) -> List[int]:
-        """Recalculate cumulative loads for a route"""
-        loads = [0]
-        current_load = 0
+    def _recalculate_loads(self, route: Route) -> List[float]:
+        """Recalculate cumulative loads for a route (floats).
+
+        Use floats for loads so downstream code that computes distances/time
+        and merges loads remains consistent with other modules that use floats.
+        """
+        loads: List[float] = [0.0]
+        current_load: float = 0.0
 
         for node in route.nodes[1:]:  # Skip depot
-            if node.type == "customer":
-                current_load += node.demand
+            if getattr(node, "type", None) == "customer":
+                current_load += float(getattr(node, "demand", 0.0))
             loads.append(current_load)
 
         return loads
@@ -294,14 +302,18 @@ class ShawRemoval(DestroyOperator):
 
         return solution
 
-    def _recalculate_loads(self, route: Route) -> List[int]:
-        """Recalculate cumulative loads for a route"""
-        loads = [0]
-        current_load = 0
+    def _recalculate_loads(self, route: Route) -> List[float]:
+        """Recalculate cumulative loads for a route (floats).
+
+        Use floats for loads so downstream code that computes distances/time
+        and merges loads remains consistent with other modules that use floats.
+        """
+        loads: List[float] = [0.0]
+        current_load: float = 0.0
 
         for node in route.nodes[1:]:  # Skip depot
-            if node.type == "customer":
-                current_load += node.demand
+            if getattr(node, "type", None) == "customer":
+                current_load += float(getattr(node, "demand", 0.0))
             loads.append(current_load)
 
         return loads
@@ -449,14 +461,18 @@ class RelatedRemoval(DestroyOperator):
 
         return solution
 
-    def _recalculate_loads(self, route: Route) -> List[int]:
-        """Recalculate cumulative loads for a route"""
-        loads = [0]
-        current_load = 0
+    def _recalculate_loads(self, route: Route) -> List[float]:
+        """Recalculate cumulative loads for a route (floats).
+
+        Use floats for loads so downstream code that computes distances/time
+        and merges loads remains consistent with other modules that use floats.
+        """
+        loads: List[float] = [0.0]
+        current_load: float = 0.0
 
         for node in route.nodes[1:]:  # Skip depot
-            if node.type == "customer":
-                current_load += node.demand
+            if getattr(node, "type", None) == "customer":
+                current_load += float(getattr(node, "demand", 0.0))
             loads.append(current_load)
 
         return loads

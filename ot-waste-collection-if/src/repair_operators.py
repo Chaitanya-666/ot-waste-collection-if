@@ -482,14 +482,26 @@ class SavingsInsertion(RepairOperator):
             for j in range(i + 1, len(sol.routes)):
                 ri = sol.routes[i]
                 rj = sol.routes[j]
+                # Only consider merging simple single-customer routes (depot-cust-depot)
                 if len(ri.nodes) >= 3 and len(rj.nodes) >= 3:
                     c1 = ri.nodes[1]
                     c2 = rj.nodes[1]
-                    s = (
-                        problem.calculate_distance(problem.depot, c1)
-                        + problem.calculate_distance(problem.depot, c2)
-                        - problem.calculate_distance(c1, c2)
-                    )
+                    # Guard against missing depot or malformed nodes
+                    if (
+                        getattr(problem, "depot", None) is None
+                        or c1 is None
+                        or c2 is None
+                    ):
+                        # skip this pair if essential data is missing
+                        continue
+                    try:
+                        d_depot_c1 = problem.calculate_distance(problem.depot, c1)
+                        d_depot_c2 = problem.calculate_distance(problem.depot, c2)
+                        d_c1_c2 = problem.calculate_distance(c1, c2)
+                        s = d_depot_c1 + d_depot_c2 - d_c1_c2
+                    except Exception:
+                        # if distance computation fails for any reason, skip this pair
+                        continue
                     savings_list.append((s, i, j))
 
         savings_list.sort(key=lambda x: x[0], reverse=True)

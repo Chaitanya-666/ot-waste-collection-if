@@ -248,12 +248,19 @@ Vehicle {route["vehicle_id"]}:
   - Load Utilization: {route["load_utilization"]:.1%}
 """
 
+        # Be robust when efficiency keys are missing or zero (avoid KeyError / formatting issues)
+        eff = analysis.get("efficiency_metrics", {})
+        dist_eff = eff.get("distance_efficiency", 0.0)
+        cap_util = eff.get("capacity_utilization", 0.0)
+        veh_eff = eff.get("vehicle_efficiency", 0.0)
+        if_eff = eff.get("if_efficiency", 0.0)
+
         report += f"""
 EFFICIENCY METRICS:
-- Distance Efficiency: {analysis["efficiency_metrics"]["distance_effency"]:.3f} (demand/distance)
-- Capacity Utilization: {analysis["efficiency_metrics"]["capacity_utilization"]:.1%}
-- Vehicle Efficiency: {analysis["efficiency_metrics"]["vehicle_efficiency"]:.1%}
-- IF Efficiency: {analysis["efficiency_metrics"]["if_efficiency"]:.1f} visits/vehicle
+- Distance Efficiency: {dist_eff:.3f} (demand/distance)
+- Capacity Utilization: {cap_util:.1%}
+- Vehicle Efficiency: {veh_eff:.1%}
+- IF Efficiency: {if_eff:.1f} visits/vehicle
 
 SOLUTION QUALITY: {"EXCELLENT" if analysis["num_unassigned"] == 0 else "NEEDS IMPROVEMENT"}
 """

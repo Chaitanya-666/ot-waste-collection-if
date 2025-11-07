@@ -8,6 +8,12 @@ Classes:
 
 from typing import List, Optional, Tuple, Union
 
+# Try to import numpy if available for distance matrix convenience; otherwise fall back to lists
+try:
+    import numpy as np  # type: ignore
+except Exception:
+    np = None  # type: ignore
+
 
 class Location:
     def __init__(
@@ -42,6 +48,11 @@ class ProblemInstance:
         self.number_of_vehicles: float = float("inf")  # Available vehicles
         self.disposal_time: float = 0.0  # Time needed at intermediate facilities
 
+        # distance_matrix will be created by calculate_distance_matrix()
+        # It is set to None until the method is called.
+        # When present it will be a numpy.ndarray if numpy is available, otherwise a nested list.
+        self.distance_matrix = None
+
     def calculate_distance(self, loc1: Location, loc2: Location) -> float:
         """Calculate Euclidean distance between two locations"""
         return ((loc1.x - loc2.x) ** 2 + (loc1.y - loc2.y) ** 2) ** 0.5
@@ -51,6 +62,42 @@ class ProblemInstance:
     ) -> float:
         """Calculate travel time between locations given speed"""
         return self.calculate_distance(loc1, loc2) / speed
+
+    def calculate_distance_matrix(self):
+        """
+        Build a full distance matrix for this problem instance.
+
+        The ordering used is: [depot] + customers + intermediate_facilities.
+        The result is stored in `self.distance_matrix` as a numpy array if numpy
+        is available, otherwise as a nested Python list.
+        """
+        # Build ordered list of nodes
+        nodes = []
+        if self.depot is not None:
+            nodes.append(self.depot)
+        nodes.extend(self.customers)
+        nodes.extend(self.intermediate_facilities)
+
+        n = len(nodes)
+        if n == 0:
+            self.distance_matrix = None
+            return self.distance_matrix
+
+        # Compute distances
+        if np is not None:
+            mat = np.zeros((n, n), dtype=float)
+            for i in range(n):
+                for j in range(n):
+                    mat[i, j] = self.calculate_distance(nodes[i], nodes[j])
+            self.distance_matrix = mat
+        else:
+            mat = [[0.0 for _ in range(n)] for _ in range(n)]
+            for i in range(n):
+                for j in range(n):
+                    mat[i][j] = self.calculate_distance(nodes[i], nodes[j])
+            self.distance_matrix = mat
+
+        return self.distance_matrix
 
     def get_total_demand(self) -> float:
         """Calculate total demand across all customers"""
@@ -64,15 +111,15 @@ class ProblemInstance:
         """
         if self.vehicle_capacity <= 0:
             return float("inf")
-        return float(
-            max(
-                1,
-                int(
-                    (self.get_total_demand() + self.vehicle_capacity - 1)
-                    // self.vehicle_capacity
-                ),
-            )
+        # Use ceil-like integer division but return a float as legacy callers expect
+        total = self.get_total_demand()
+        per_vehicle = float(self.vehicle_capacity)
+        needed = (
+            int((total + per_vehicle - 1) // per_vehicle)
+            if per_vehicle > 0
+            else float("inf")
         )
+        return float(max(1, needed))
 
     def __str__(self) -> str:
         return (
