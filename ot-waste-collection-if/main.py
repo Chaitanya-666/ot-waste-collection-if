@@ -138,11 +138,36 @@ def run_comprehensive_demonstration():
     # Create problem
     problem = create_comprehensive_instance()
 
+    # Ensure the solver has enough vehicles to feasibly serve total demand.
+    # If the generated instance would require more vehicles than currently configured,
+    # bump `number_of_vehicles` to the minimum required so the solver can attempt a full assignment.
+    try:
+        min_needed = int(problem.get_min_vehicles_needed())
+        if (
+            getattr(problem, "number_of_vehicles", None) is None
+            or problem.number_of_vehicles < min_needed
+        ):
+            problem.number_of_vehicles = min_needed
+            print(
+                f"Note: adjusted problem.number_of_vehicles to minimum required: {problem.number_of_vehicles}"
+            )
+    except Exception:
+        # If anything goes wrong here, continue — a subsequent feasibility check will catch issues.
+        pass
+
+    # Sanity / feasibility check: if instance is still infeasible, warn and exit early.
+    feasible_flag, feasible_msg = problem.is_feasible()
     print(f"\nProblem: {problem}")
     print(
         f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
     )
     print(f"Vehicle Capacity: {problem.vehicle_capacity}")
+    if not feasible_flag:
+        print(f"Problem feasibility check: {feasible_flag} ({feasible_msg})")
+        print(
+            "Instance is infeasible with the current settings. Adjust vehicle capacity or number_of_vehicles and retry."
+        )
+        return
 
     # Initialize solver
     solver = ALNS(problem)
@@ -409,7 +434,48 @@ Examples:
 
     else:
         # Default: run comprehensive demonstration
-        solution, problem, solver, analysis = run_comprehensive_demonstration()
+        # Create the comprehensive problem instance and ensure the solver has enough vehicles
+        # to feasibly attempt a full assignment before running the optimizer.
+        problem = create_comprehensive_instance()
+
+        try:
+            min_needed = int(problem.get_min_vehicles_needed())
+            if (
+                getattr(problem, "number_of_vehicles", None) is None
+                or problem.number_of_vehicles < min_needed
+            ):
+                problem.number_of_vehicles = min_needed
+                print(
+                    f"Note: adjusted problem.number_of_vehicles to minimum required: {problem.number_of_vehicles}"
+                )
+        except Exception:
+            # If anything goes wrong here, continue — the subsequent feasibility check will catch issues.
+            pass
+
+        # Sanity / feasibility check: if instance is still infeasible, warn and exit early.
+        feasible_flag, feasible_msg = problem.is_feasible()
+        print(f"\nProblem: {problem}")
+        print(
+            f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
+        )
+        print(f"Vehicle Capacity: {problem.vehicle_capacity}")
+        if not feasible_flag:
+            print(f"Problem feasibility check: {feasible_flag} ({feasible_msg})")
+            print(
+                "Instance is infeasible with the current settings. Adjust vehicle capacity or number_of_vehicles and retry."
+            )
+            return
+
+        # Initialize solver with configured iterations and run
+        solver = ALNS(problem)
+        solver.max_iterations = args.iterations
+        start_time = time.time()
+        solution = solver.run(max_iterations=solver.max_iterations)
+        end_time = time.time()
+
+        # Analyze solution
+        analyzer = PerformanceAnalyzer(problem)
+        analysis = analyzer.analyze_solution(solution)
 
     # Visualization
     if args.verbose or args.save_plots:

@@ -113,6 +113,23 @@ def main():
         cluster_factor=0.4,
     )
 
+    # Ensure the solver has enough vehicles to feasibly serve total demand.
+    # If the generated instance would require more vehicles than currently configured,
+    # bump `number_of_vehicles` to the minimum required so the solver can attempt a full assignment.
+    try:
+        min_needed = int(problem.get_min_vehicles_needed())
+        if (
+            getattr(problem, "number_of_vehicles", None) is None
+            or problem.number_of_vehicles < min_needed
+        ):
+            problem.number_of_vehicles = min_needed
+            print(
+                f"Note: adjusted problem.number_of_vehicles to minimum required: {problem.number_of_vehicles}"
+            )
+    except Exception:
+        # If anything goes wrong here, continue — the subsequent sanity check will catch infeasibility.
+        pass
+
     # sanity check
     feasible_flag, feasible_msg = problem.is_feasible()
     print(f"Problem feasibility check: {feasible_flag} ({feasible_msg})")
