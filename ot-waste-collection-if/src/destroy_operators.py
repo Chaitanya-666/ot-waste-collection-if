@@ -5,8 +5,8 @@ Destroy operators for ALNS in VRP with Intermediate Facilities
 import random
 import math
 from typing import List, Set, Dict, Any
-from .solution import Solution, Route
-from .problem import ProblemInstance, Location
+from solution import Solution, Route
+from problem import ProblemInstance, Location
 
 
 class DestroyOperator:

@@ -16,8 +16,8 @@ import random
 import math
 import time
 from typing import List, Dict, Tuple, Optional, Callable
-from .solution import Solution, Route
-from .problem import ProblemInstance, Location
+from solution import Solution, Route
+from problem import ProblemInstance, Location
 
 
 class RouteVisualizer:

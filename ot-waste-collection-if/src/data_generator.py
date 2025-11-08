@@ -12,7 +12,7 @@ import json
 import random
 import math
 from typing import List, Dict, Tuple, Optional
-from .problem import ProblemInstance, Location
+from problem import ProblemInstance, Location
 
 
 class DataGenerator:

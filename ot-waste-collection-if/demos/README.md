@@ -1,158 +1,218 @@
-# Demos — VRP-IF with ALNS
+/mnt/windows-d/TY LABWORKS/OT LAB/project/ot-waste-collection-if/ot-waste-collection-if/demos/README.md#L1-260
+# Demos — VRP-IF with ALNS (Complete Start-to-Finish Guide)
 
-This directory contains scripts and instructions to run reproducible demonstrations of the ALNS solver for the Vehicle Routing Problem with Intermediate Facilities (VRP-IF). The demo scripts produce:
+This directory contains demonstration scripts and documentation for the ALNS solver for the Vehicle Routing Problem with Intermediate Facilities (VRP-IF). This README provides complete start-to-finish guidance so someone new to the repository can:
 
-- A synthetic problem instance (configurable).
-- A solved route plan (JSON).
-- Route and convergence plots (PNG).
-- A short performance summary printed to stdout.
+- Set up the environment
+- Generate or load instances
+- Run the solver through the `main.py` entrypoint or demo scripts
+- Save and inspect outputs (JSON, plots)
+- Run tests and troubleshoot common problems
+- Extend or contribute to the demos
 
-Location:
-- Demo script: `demos/comprehensive_demo.py`
+Location
+- Demo runner: `demos/comprehensive_demo.py`
 - Demo outputs: `demos/outputs/` (created at runtime)
+- CLI entrypoint (project root): `main.py`
 - Requirements: `requirements.txt` in the project root
 
----
+Overview
+- The project implements an Adaptive Large Neighborhood Search (ALNS) framework for municipal waste collection routing where vehicles may visit intermediate facilities (IFs) to unload.
+- Demos generate synthetic instances, solve them using ALNS, produce JSON solutions, and optionally generate route & convergence plots.
 
-Quick prerequisites
-- Python 3.8+ recommended (3.10+ preferred)
-- Install dependencies (inside virtualenv is recommended):
+Prerequisites
+- Python 3.8+ (3.10+ recommended)
+- pip
+- Optional: virtualenv or venv for an isolated environment
+
+Quick setup
+1. Create and activate a virtual environment (recommended):
 
 ```/dev/null/commands.sh#L1-3
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+2. Install dependencies:
+
+```/dev/null/commands.sh#L4-6
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If you cannot open graphical windows on the host (headless server), set the matplotlib backend before running the demo:
+Note: If you cannot open graphical windows on the host (headless server), set the matplotlib backend before running demos:
 
-```/dev/null/commands.sh#L4-6
+```/dev/null/commands.sh#L7-9
 export MPLBACKEND=Agg   # Linux/macOS (bash)
-set MPLBACKEND=Agg      # Windows (PowerShell: $env:MPLBACKEND = 'Agg')
+# Windows (PowerShell): $env:MPLBACKEND = 'Agg'
 ```
 
----
+Running demos — quick commands
 
-How to run the comprehensive demo
+- Run the packaged comprehensive demo script (recommended for reproducible demo):
 
-From repository root, run the demo script:
-
-```/dev/null/commands.sh#L7-12
+```/dev/null/commands.sh#L10-14
 python3 demos/comprehensive_demo.py --customers 20 --ifs 2 --capacity 30 --iterations 500 --save-plots
 ```
 
-Arguments:
-- `--customers`: number of customers to generate (default 20)
-- `--ifs`: number of intermediate facilities (default 2)
-- `--capacity`: vehicle capacity used for the instance
-- `--iterations`: number of ALNS iterations
-- `--save-plots`: save route & convergence plots to `demos/outputs/`
-- `--output-dir`: customize output directory
+- Use the `main.py` CLI entrypoint to run various modes:
 
-You can also use the enhanced CLI entrypoint:
-
-```/dev/null/commands.sh#L13-16
+```/dev/null/commands.sh#L15-20
 python3 main.py --demo comprehensive --save-plots --save-results
+python3 main.py --demo basic
+python3 main.py --demo benchmark
 ```
 
-`main.py` exposes additional demonstration and benchmarking modes (see `--demo` option).
+- Solve from an existing instance JSON file:
 
----
+```/dev/null/commands.sh#L21-24
+python3 main.py --instance path/to/instance.json --iterations 300 --save-results
+```
+
+- Create a configuration template (if supported):
+
+```/dev/null/commands.sh#L25-27
+python3 main.py --create-config
+```
+
+CLI options (important ones)
+- `--demo {basic,comprehensive,benchmark}` — run demonstration modes
+- `--instance <file>` — load and solve an instance stored as JSON
+- `--iterations N` — number of ALNS iterations (default: 200)
+- `--live` — enable live plotting (interactive; requires a display)
+- `--save-plots` — save route and convergence plots as PNGs
+- `--save-results` — save solution JSON to disk
+- `--create-config` — produce a configuration template JSON
+- `--verbose` — print more output and solver internals
 
 What the demo produces
 - JSON solution file: `demos/outputs/solution_<timestamp>.json`
-  - Contains routes, node sequences, loads, distances and run metadata.
+  - Contains routes, node sequences, loads, distances, and run metadata.
 - Route plot: `demos/outputs/routes_<timestamp>.png`
-  - Visual map of routes, depot, customers and intermediate facilities.
+  - Visual map of routes, depot, customers, and intermediate facilities.
 - Convergence plot: `demos/outputs/convergence_<timestamp>.png`
-  - Solver cost vs iteration history.
-- Console output with a brief performance summary and detailed route metrics.
+  - Solver objective (cost) vs. iteration history.
+- Console output: summary with total cost, distance/time, vehicles used, and route-level details.
 
----
+Recommended run flow (start-to-finish)
+1. Install dependencies and set MPL backend if headless.
+2. Run a small demonstration to verify everything works:
 
-What to show in a live demo or recorded video
-1. Run a demo (small or medium instance). Show the console output:
-   - Total cost, total distance/time.
-   - Number of routes and unassigned customers (should be 0 for feasible instances).
-2. Open the route plot and point out:
-   - Depot marker.
-   - IF (Intermediate Facility) markers — where vehicles stop to empty.
-   - A route where the vehicle visits an IF during its itinerary — emphasize load reset after IF.
-3. Open the convergence plot:
-   - Show how solution cost evolves.
-   - Highlight the iteration where the best solution was found.
-4. Open and inspect the solution JSON (or print one route):
-   - Show node IDs and sequence (depot / customers / IF / depot).
-   - Verify loads per route (ensure no capacity violations).
-5. (Optional) Run a benchmark set and show a short table of cost/time/vehicles for several instances.
+```/dev/null/commands.sh#L28-32
+python3 main.py --demo basic --iterations 100 --save-plots --save-results --verbose
+```
 
----
+3. Inspect outputs:
+   - Open the generated JSON to view routes and metadata.
+   - Open route & convergence PNGs (if generated).
+4. Run a larger comprehensive demo:
 
-Acceptance criteria to claim success
-- Functional:
-  - All customers are assigned in demo instances (unassigned customers == 0).
-  - No capacity violations in any route (per-route max load ≤ vehicle capacity).
-  - IF visits appear where needed (routes that would exceed capacity have IFs).
-- Algorithmic:
-  - Convergence plot shows improvement (typically the cost reduces rapidly in early iterations).
-  - Best solution is found before the final iteration (indicates effective operator behavior).
-- Reproducibility:
-  - Using the same `--seed` yields identical results for the same configuration (documented nondeterminism if randomized operators still vary).
-- Robustness:
-  - Demo runs without errors on the target machine with required packages installed.
+```/dev/null/commands.sh#L33-37
+python3 main.py --demo comprehensive --iterations 500 --save-plots --save-results
+```
 
----
+5. For benchmarking, use the `benchmark` demo mode to run multiple instance sizes and collect summary statistics.
 
-Test the codebase
-- Run the test suite to validate core components:
+Understanding outputs (JSON solution)
+- The solution JSON contains:
+  - `routes`: list of routes; each route is a sequence of node IDs (depots, customers, IFs).
+  - `total_cost`, `total_distance`, `total_time`
+  - `unassigned_customers` (should be empty for feasible instances)
+  - `run_metadata`: seed, iterations, timestamp, runtime
+- Use `demos/outputs` to store and organize runs by timestamp.
 
-```/dev/null/commands.sh#L17-19
+Testing the codebase
+- Run unit tests (recommended to run from repository root or adjust PYTHONPATH):
+
+Option A — change directory into package and run tests:
+
+```/dev/null/commands.sh#L38-40
+cd ot-waste-collection-if/ot-waste-collection-if
 python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-All tests should pass for core functions like create-instance, route feasibility, destroy/repair operator basic behavior, and a short ALNS run.
+Option B — use PYTHONPATH to ensure `src` can be imported from tests (run from repo root):
 
----
+```/dev/null/commands.sh#L41-44
+PYTHONPATH=ot-waste-collection-if/ot-waste-collection-if python3 -m unittest discover \
+    -s ot-waste-collection-if/ot-waste-collection-if/tests -p "test_*.py"
+```
+
+- Note: Tests exercise core modules: `problem`, `solution`, destroy/repair operators, and ALNS integration. If a test fails, examine stack traces and start with small `iterations` to reproduce faster.
 
 Troubleshooting / common issues
-- Plotting fails / no display:
-  - Use a headless backend: `export MPLBACKEND=Agg` (Linux/macOS) before running.
-- “Customer demand exceeds vehicle capacity”:
-  - This means the generated customer demand exceeded the vehicle capacity. Increase `capacity` or reduce `demand_range`.
-- Long runs:
-  - Reduce `--iterations` for quick demos (e.g., 100-300).
-- Missing dependencies:
-  - Ensure `numpy` and `matplotlib` are installed. Use the provided `requirements.txt`.
-- Unassigned customers remain:
-  - Try increasing `--iterations` or review the instance for feasibility (problem.is_feasible() check).
+- "Matplotlib backend error / plots don't appear"
+  - Use `export MPLBACKEND=Agg` (or equivalent for your shell) to run headless plotting.
+- "Customer demand exceeds vehicle capacity"
+  - This means generated customer demand > vehicle capacity. Increase `--capacity` or adjust `demand_range` (if using generator).
+- "Unassigned customers remain"
+  - Instance may be infeasible with current vehicle count/capacity. Check `problem.is_feasible()` output. Increase `--iterations` or adjust instance parameters.
+- "ImportError in tests"
+  - Ensure you run tests from the correct working directory or set `PYTHONPATH` so test runner finds `src` modules.
+- "Live plotting errors"
+  - Live plotting requires a display (X11/Wayland) and `matplotlib` interactive backend. On headless servers, avoid `--live`.
 
----
+Project structure (important files)
+- `main.py` — enhanced CLI entrypoint (run demos, load instances, save results)
+- `src/`
+  - `problem.py` — ProblemInstance and Location definitions, distance/time utilities
+  - `solution.py` — Route and Solution classes; metric calculations and feasibility checks
+  - `alns.py` — ALNS algorithm implementation and orchestration
+  - `destroy_operators.py` / `repair_operators.py` — operator implementations and managers
+  - `utils.py` — visualization and performance analysis helpers
+- `demos/` — demo drivers and example scripts
+  - `demos/comprehensive_demo.py` — a script that builds an instance, runs solver, and saves outputs
+  - `demos/outputs/` — demo artifacts generated at runtime
+- `tests/` — unit tests (run as shown earlier)
+- `requirements.txt` — dependency list
 
-Recommended demonstration script / flow (5–8 minutes)
-1. Show the project README briefly (one slide describing the problem).
-2. Run a quick demo: small instance with plots saved (30–60s).
-3. Display the route PNG and point out IF visits and routes.
-4. Display the convergence PNG and mention adaptive operator behavior.
-5. Open solution JSON to show route sequences and loads.
-6. Show short automated test run output confirming correctness.
+Tips for reproducible experiments
+- Always set `--seed` (if available in demo scripts) to reproduce random instance and operator behavior.
+- Save both JSON and plots for each run. Include the `run_metadata` (seed & parameters) in the JSON.
+- For CI: run the unit tests with a small iteration count to validate functionality quickly.
 
----
+Extending demos or adding notebooks
+- Add a Jupyter notebook that:
+  - Generates a medium sized instance
+  - Runs `ALNS` with a fixed seed
+  - Embeds route & convergence figures inline
+  - Saves the solution JSON and prints analysis summary
+- Put notebooks under `notebooks/` and include a short README describing reproduction steps.
 
-Files in `demos/`
-- `comprehensive_demo.py` — main demo runner (configurable via CLI)
-- `outputs/` — demo outputs (created at runtime)
-- (You can add additional scripts, e.g. `demo_quick.py` for a 1-minute smoke test.)
+Contributing
+- Fork the repository, create a feature branch, and open a pull request with:
+  - Clear description of changes
+  - New or updated tests for new behavior
+  - Updated demo or README instructions if behavior changed
+- Keep commits focused and tests passing locally before PR.
 
----
+Acceptance criteria for a successful demo
+- No unhandled exceptions during the run
+- All customers assigned for feasible instances
+- No capacity violations in any route
+- IF visits present where appropriate (when a vehicle exceeds capacity mid-route)
+- Convergence plot shows objective improving (typically faster in early iterations)
+- Re-running with the same seed reproduces the result
 
-Next recommended steps (if you want to finalize the project)
-- Add a short Jupyter notebook that runs a medium-size instance and embeds the plots and analysis summary for reproducible experiments.
-- Add a short slideshow or recorded walkthrough that follows the demo script above (helpful for presentations).
-- Add a CI job to run the tests and produce the demo artifacts (plots + JSON) on each push.
+Example complete run (short)
+1. Create venv and install requirements.
+2. Run a small comprehensive demo and save plots:
 
----
+```/dev/null/commands.sh#L45-49
+python3 main.py --demo comprehensive --iterations 200 --save-plots --save-results --verbose
+```
 
-If you'd like, I can:
-- Create a short presentation outline (slide-by-slide).
-- Add a small Jupyter notebook that runs the demo and embeds plots and metrics.
-- Add a GitHub Actions workflow that runs tests and generates demo artifacts.
+3. Inspect `demos/outputs/solution_<timestamp>.json`, `routes_<timestamp>.png`, and `convergence_<timestamp>.png`.
 
-Tell me which addition you want next and I will prepare it.
+Contact / support
+- For questions about design or help reproducing results, open an issue in the repo with:
+  - OS and Python version
+  - Command used
+  - Smallest reproducible example (if possible)
+  - Any traceback logs
+
+Final notes
+- This README aims to be a comprehensive start-to-finish guide for running demos and working with this project. If you would like, we can:
+  - Add a short Jupyter notebook demonstrating a medium-sized experiment end-to-end.
+  - Add a GitHub Actions workflow to run tests and generate a demo artifact on each push.
+  - Produce a short slide deck documenting the problem, approach, and demo steps for presentations.

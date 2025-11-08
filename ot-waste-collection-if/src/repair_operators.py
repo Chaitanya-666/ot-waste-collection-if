@@ -23,8 +23,8 @@ from copy import deepcopy
 import random
 from typing import List, Tuple, Optional
 
-from .solution import Solution, Route
-from .problem import Location, ProblemInstance
+from solution import Solution, Route
+from problem import Location, ProblemInstance
 
 
 class RepairOperator:

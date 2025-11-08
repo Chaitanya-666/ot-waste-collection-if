@@ -15,18 +15,26 @@ This enhanced main program provides:
 import argparse
 import sys
 import os
-import json
 import time
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Optional, Tuple, Dict, Any
 
-# Add the src directory to the path
+# Ensure the project's `src` directory is importable when the script runs directly.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from src.problem import ProblemInstance, Location
-from src.alns import ALNS
-from src.data_generator import DataGenerator
-from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file
+# Try explicit top-level imports (when running as a script). If that fails (e.g. imported as package),
+# fall back to package-relative imports. The fallbacks include `# type: ignore` to quiet static type checks.
+try:
+    from src.problem import ProblemInstance, Location  # type: ignore
+    from src.alns import ALNS  # type: ignore
+    from src.data_generator import DataGenerator  # type: ignore
+    from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file  # type: ignore
+except Exception:
+    # Package-relative imports (works when the package is imported)
+    from .src.problem import ProblemInstance, Location  # type: ignore
+    from .src.alns import ALNS  # type: ignore
+    from .src.data_generator import DataGenerator  # type: ignore
+    from .src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file  # type: ignore
 
 
 def create_sample_instance() -> ProblemInstance:
@@ -129,14 +137,21 @@ def run_basic_demonstration():
     return solution, problem, solver
 
 
-# some test
-def run_comprehensive_demonstration(live: bool = False, iterations: int = 500):
+def run_comprehensive_demonstration(
+    live: bool = False, iterations: int = 500
+) -> Tuple[
+    Optional[object], ProblemInstance, Optional[object], Optional[Dict[str, Any]]
+]:
     """Run a comprehensive demonstration with analysis
 
     Args:
         live: when True, enable live plotting via RouteVisualizer and wire the solver
               iteration callback so the plot updates during optimization.
         iterations: number of ALNS iterations to run.
+
+    Returns:
+        A 4-tuple: (solution or None, problem, solver or None, analysis dict or None).
+        If the instance is infeasible the function returns (None, problem, None, None).
     """
     print("\n" + "=" * 60)
     print("COMPREHENSIVE DEMONSTRATION")
@@ -146,8 +161,6 @@ def run_comprehensive_demonstration(live: bool = False, iterations: int = 500):
     problem = create_comprehensive_instance()
 
     # Ensure the solver has enough vehicles to feasibly serve total demand.
-    # If the generated instance would require more vehicles than currently configured,
-    # bump `number_of_vehicles` to the minimum required so the solver can attempt a full assignment.
     try:
         min_needed = int(problem.get_min_vehicles_needed())
         if (
@@ -174,7 +187,8 @@ def run_comprehensive_demonstration(live: bool = False, iterations: int = 500):
         print(
             "Instance is infeasible with the current settings. Adjust vehicle capacity or number_of_vehicles and retry."
         )
-        return
+        # Return a consistent tuple so callers do not crash on unpacking
+        return None, problem, None, None
 
     # Initialize solver
     solver = ALNS(problem)
@@ -196,6 +210,7 @@ def run_comprehensive_demonstration(live: bool = False, iterations: int = 500):
                     # swallow visualization errors to keep solver running
                     pass
 
+            # Assign callback (acceptable at runtime; some static checkers may warn)
             solver.iteration_callback = _iteration_callback
             print("Live plotting enabled for comprehensive demonstration.")
         except Exception:
@@ -308,7 +323,7 @@ def run_benchmark_demonstration():
             "distance": solution.total_distance,
             "vehicles": len(solution.routes),
             "time": end_time - start_time,
-            "convergence": len(solver.convergence_history),
+            "convergence": len(getattr(solver, "convergence_history", [])),
         }
 
         results.append(result)
@@ -389,6 +404,9 @@ def run_visualization_demo(
     except ImportError as e:
         print(f"Visualization not available: {e}")
         print("Install matplotlib: pip install matplotlib")
+    except Exception as e:
+        # Do not let visualization failures crash the run.
+        print(f"Visualization failed: {e}")
 
 
 def save_results(solution, problem, analysis=None, filename=None):
@@ -463,16 +481,28 @@ Examples:
         DataGenerator.create_config_template()
         return
 
+    # Initialize placeholders
+    solution = None
+    problem = None
+    solver = None
+    analysis = None
+
     # Handle different modes
     if args.demo:
         if args.demo == "basic":
             solution, problem, solver = run_basic_demonstration()
         elif args.demo == "comprehensive":
-            solution, problem, solver, analysis = run_comprehensive_demonstration(
-                live=getattr(args, "live", False)
+            result = run_comprehensive_demonstration(
+                live=getattr(args, "live", False), iterations=args.iterations
             )
+            solution, problem, solver, analysis = result
+            if solution is None:
+                print(
+                    "Comprehensive demonstration did not produce a solution. Exiting."
+                )
+                return
         elif args.demo == "benchmark":
-            results = run_benchmark_demonstration()
+            _results = run_benchmark_demonstration()
             return
 
     elif args.instance:
@@ -492,69 +522,53 @@ Examples:
 
     else:
         # Default: run comprehensive demonstration (respect --live if provided)
-        solution, problem, solver, analysis = run_comprehensive_demonstration(
-            live=getattr(args, "live", False)
+        result = run_comprehensive_demonstration(
+            live=getattr(args, "live", False), iterations=args.iterations
         )
-        # Optionally enable live plotting by wiring an iteration callback on the solver
-        visualizer = None
-        if getattr(args, "live", False):
-            try:
-                visualizer = RouteVisualizer(problem, live=True)
-                visualizer.start_live(title=f"Live - {problem.name}")
+        solution, problem, solver, analysis = result
+        if solution is None:
+            print("Comprehensive demonstration did not produce a solution. Exiting.")
+            return
 
-                def _iteration_callback(iteration_idx, best_solution):
-                    try:
-                        visualizer.update_live(
-                            best_solution, getattr(solver, "convergence_history", [])
-                        )
-                    except Exception:
-                        pass
+    # Visualization (only if we have a solution)
+    if solution is not None and (args.verbose or args.save_plots):
+        try:
+            run_visualization_demo(solution, problem, save_plots=args.save_plots)
+        except Exception as e:
+            print(f"Visualization aborted: {e}")
 
-                solver.iteration_callback = _iteration_callback
-                print("Live plotting enabled for comprehensive demonstration.")
-            except Exception:
-                visualizer = None
-
-        start_time = time.time()
-        solution = solver.run(max_iterations=solver.max_iterations)
-        end_time = time.time()
-
-        # If live plotting was enabled, do a final update and stop interactive mode.
-        if visualizer is not None:
-            try:
-                visualizer.update_live(
-                    solution, getattr(solver, "convergence_history", [])
-                )
-                visualizer.stop_live()
-            except Exception:
-                pass
-
-        # Analyze solution
-        analyzer = PerformanceAnalyzer(problem)
-        analysis = analyzer.analyze_solution(solution)
-
-    # Visualization
-    if args.verbose or args.save_plots:
-        run_visualization_demo(solution, problem, save_plots=args.save_plots)
-
-    # Save results
-    if args.save_results:
-        save_results(solution, problem, analysis)
+    # Save results (only if we have a solution)
+    if solution is not None and args.save_results:
+        try:
+            save_results(solution, problem, analysis)
+        except Exception as e:
+            print(f"Failed to save results: {e}")
 
     # Final summary
     print(f"\n" + "=" * 60)
     print("DEMONSTRATION COMPLETE")
     print("=" * 60)
-    print(f"Final Solution Cost: {solution.total_cost:.2f}")
-    print(f"Total Routes: {len(solution.routes)}")
-    print(f"Unassigned Customers: {len(solution.unassigned_customers)}")
-    print(
-        f"All customers assigned: {'Yes' if len(solution.unassigned_customers) == 0 else 'No'}"
-    )
+    if solution is not None:
+        try:
+            print(f"Final Solution Cost: {solution.total_cost:.2f}")
+            print(f"Total Routes: {len(solution.routes)}")
+            print(f"Unassigned Customers: {len(solution.unassigned_customers)}")
+            print(
+                f"All customers assigned: {'Yes' if len(solution.unassigned_customers) == 0 else 'No'}"
+            )
+        except Exception:
+            print("Solution summary: (failed to display some fields)")
+    else:
+        print("No solution available to summarize.")
 
-    if args.verbose:
-        print(f"Solver completed {solver.iteration} iterations")
-        print(f"Best solution found at iteration: {len(solver.convergence_history)}")
+    if args.verbose and solver is not None:
+        try:
+            print(f"Solver completed {solver.iteration} iterations")
+            print(
+                f"Best solution found at iteration: {len(getattr(solver, 'convergence_history', []))}"
+            )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
