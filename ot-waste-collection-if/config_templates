@@ -1,0 +1,341 @@
+{
+  "basic_config": {
+    "name": "Basic Configuration",
+    "description": "Standard configuration for medium-sized problems",
+    "algorithm": {
+      "max_iterations": 200,
+      "seed": 42,
+      "temperature": 1000.0,
+      "cooling_rate": 0.995,
+      "learning_rate": 0.1,
+      "adaptive_period": 50
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.0
+      },
+      "worst_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.0
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.0
+      },
+      "route_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.0
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 3,
+        "weight": 1.0
+      },
+      "regret_insertion": {
+        "k_regret": 2,
+        "weight": 1.0
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 1.5,
+        "weight": 1.0
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.8,
+        "weight": 1.0
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 25,
+      "max_route_time": 1000,
+      "max_route_length": 500,
+      "disposal_time": 10,
+      "demand_range": [1, 10],
+      "service_time_range": [1, 5]
+    }
+  },
+  "fast_config": {
+    "name": "Fast Configuration",
+    "description": "Optimized for quick execution with good results",
+    "algorithm": {
+      "max_iterations": 100,
+      "seed": 42,
+      "temperature": 500.0,
+      "cooling_rate": 0.99,
+      "learning_rate": 0.15,
+      "adaptive_period": 25
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.1,
+        "weight": 1.2
+      },
+      "worst_removal": {
+        "removal_ratio": 0.1,
+        "weight": 1.2
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.1,
+        "weight": 0.8
+      },
+      "route_removal": {
+        "removal_ratio": 0.1,
+        "weight": 0.8
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 2,
+        "weight": 1.5
+      },
+      "regret_insertion": {
+        "k_regret": 2,
+        "weight": 1.0
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 1.2,
+        "weight": 1.0
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.7,
+        "weight": 0.8
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 25,
+      "max_route_time": 800,
+      "max_route_length": 400,
+      "disposal_time": 10,
+      "demand_range": [1, 10],
+      "service_time_range": [1, 5]
+    }
+  },
+  "quality_config": {
+    "name": "Quality Configuration",
+    "description": "Optimized for solution quality, slower execution",
+    "algorithm": {
+      "max_iterations": 500,
+      "seed": 42,
+      "temperature": 2000.0,
+      "cooling_rate": 0.998,
+      "learning_rate": 0.05,
+      "adaptive_period": 100
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.2,
+        "weight": 1.0
+      },
+      "worst_removal": {
+        "removal_ratio": 0.2,
+        "weight": 1.5
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.2,
+        "weight": 1.2
+      },
+      "route_removal": {
+        "removal_ratio": 0.2,
+        "weight": 1.0
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 5,
+        "weight": 1.0
+      },
+      "regret_insertion": {
+        "k_regret": 3,
+        "weight": 1.5
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 2.0,
+        "weight": 1.2
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.9,
+        "weight": 1.0
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 25,
+      "max_route_time": 1200,
+      "max_route_length": 600,
+      "disposal_time": 15,
+      "demand_range": [1, 10],
+      "service_time_range": [1, 5]
+    }
+  },
+  "urban_config": {
+    "name": "Urban Configuration",
+    "description": "Optimized for dense urban areas with high clustering",
+    "algorithm": {
+      "max_iterations": 300,
+      "seed": 42,
+      "temperature": 1500.0,
+      "cooling_rate": 0.996,
+      "learning_rate": 0.08,
+      "adaptive_period": 60
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.12,
+        "weight": 1.0
+      },
+      "worst_removal": {
+        "removal_ratio": 0.12,
+        "weight": 1.3
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.12,
+        "weight": 1.5
+      },
+      "route_removal": {
+        "removal_ratio": 0.12,
+        "weight": 0.9
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 4,
+        "weight": 1.2
+      },
+      "regret_insertion": {
+        "k_regret": 2,
+        "weight": 1.3
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 1.8,
+        "weight": 1.4
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.6,
+        "weight": 0.9
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 18,
+      "max_route_time": 600,
+      "max_route_length": 300,
+      "disposal_time": 8,
+      "demand_range": [2, 8],
+      "service_time_range": [2, 4],
+      "cluster_factor": 0.7
+    }
+  },
+  "suburban_config": {
+    "name": "Suburban Configuration",
+    "description": "Optimized for suburban areas with medium clustering",
+    "algorithm": {
+      "max_iterations": 250,
+      "seed": 42,
+      "temperature": 1200.0,
+      "cooling_rate": 0.995,
+      "learning_rate": 0.1,
+      "adaptive_period": 50
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.1
+      },
+      "worst_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.1
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.2
+      },
+      "route_removal": {
+        "removal_ratio": 0.15,
+        "weight": 1.0
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 3,
+        "weight": 1.3
+      },
+      "regret_insertion": {
+        "k_regret": 2,
+        "weight": 1.1
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 1.5,
+        "weight": 1.2
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.8,
+        "weight": 1.0
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 25,
+      "max_route_time": 900,
+      "max_route_length": 450,
+      "disposal_time": 12,
+      "demand_range": [1, 12],
+      "service_time_range": [1, 6],
+      "cluster_factor": 0.4
+    }
+  },
+  "rural_config": {
+    "name": "Rural Configuration",
+    "description": "Optimized for rural areas with low clustering",
+    "algorithm": {
+      "max_iterations": 400,
+      "seed": 42,
+      "temperature": 1800.0,
+      "cooling_rate": 0.997,
+      "learning_rate": 0.06,
+      "adaptive_period": 80
+    },
+    "destroy_operators": {
+      "random_removal": {
+        "removal_ratio": 0.18,
+        "weight": 1.2
+      },
+      "worst_removal": {
+        "removal_ratio": 0.18,
+        "weight": 1.0
+      },
+      "shaw_removal": {
+        "removal_ratio": 0.18,
+        "weight": 0.8
+      },
+      "route_removal": {
+        "removal_ratio": 0.18,
+        "weight": 1.3
+      }
+    },
+    "repair_operators": {
+      "greedy_insertion": {
+        "insertion_attempts": 4,
+        "weight": 1.1
+      },
+      "regret_insertion": {
+        "k_regret": 3,
+        "weight": 1.4
+      },
+      "if_aware_repair": {
+        "if_penalty_factor": 1.3,
+        "weight": 1.1
+      },
+      "savings_insertion": {
+        "merge_threshold": 0.9,
+        "weight": 1.3
+      }
+    },
+    "problem": {
+      "vehicle_capacity": 35,
+      "max_route_time": 1500,
+      "max_route_length": 750,
+      "disposal_time": 20,
+      "demand_range": [3, 15],
+      "service_time_range": [1, 8],
+      "cluster_factor": 0.2
+    }
+  }
+}
