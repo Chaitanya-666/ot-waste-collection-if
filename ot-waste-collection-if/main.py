@@ -129,8 +129,14 @@ def run_basic_demonstration():
     return solution, problem, solver
 
 
-def run_comprehensive_demonstration():
-    """Run a comprehensive demonstration with analysis"""
+def run_comprehensive_demonstration(live: bool = False, iterations: int = 500):
+    """Run a comprehensive demonstration with analysis
+
+    Args:
+        live: when True, enable live plotting via RouteVisualizer and wire the solver
+              iteration callback so the plot updates during optimization.
+        iterations: number of ALNS iterations to run.
+    """
     print("\n" + "=" * 60)
     print("COMPREHENSIVE DEMONSTRATION")
     print("=" * 60)
@@ -171,7 +177,28 @@ def run_comprehensive_demonstration():
 
     # Initialize solver
     solver = ALNS(problem)
-    solver.max_iterations = 500
+    solver.max_iterations = int(iterations)
+
+    # Optionally enable live plotting: set up visualizer and register iteration callback
+    visualizer = None
+    if live:
+        try:
+            visualizer = RouteVisualizer(problem, live=True)
+            visualizer.start_live(title=f"Live - {problem.name}")
+
+            def _iteration_callback(iteration_idx, best_solution):
+                try:
+                    visualizer.update_live(
+                        best_solution, getattr(solver, "convergence_history", [])
+                    )
+                except Exception:
+                    # swallow visualization errors to keep solver running
+                    pass
+
+            solver.iteration_callback = _iteration_callback
+            print("Live plotting enabled for comprehensive demonstration.")
+        except Exception:
+            visualizer = None
 
     # Run optimization
     print(f"\nStarting ALNS optimization with {solver.max_iterations} iterations...")
@@ -181,6 +208,14 @@ def run_comprehensive_demonstration():
     end_time = time.time()
 
     print(f"ALNS completed in {end_time - start_time:.2f} seconds")
+
+    # If live plotting was enabled, do a final update and stop interactive mode.
+    if visualizer is not None:
+        try:
+            visualizer.update_live(solution, getattr(solver, "convergence_history", []))
+            visualizer.stop_live()
+        except Exception:
+            pass
 
     # Performance analysis
     analyzer = PerformanceAnalyzer(problem)
@@ -302,8 +337,16 @@ def run_benchmark_demonstration():
     return results
 
 
-def run_visualization_demo(solution, problem, save_plots=False):
-    """Run visualization demonstration"""
+def run_visualization_demo(
+    solution, problem, save_plots=False, convergence_history=None
+):
+    """Run visualization demonstration
+
+    This function now accepts an optional `convergence_history` list. If it is not
+    provided it will attempt to read `solution.solver.convergence_history` as a
+    fallback (defensive). This decouples the visualizer from requiring `solution`
+    to carry a `solver` attribute.
+    """
     print("\n" + "=" * 60)
     print("VISUALIZATION DEMONSTRATION")
     print("=" * 60)
@@ -323,7 +366,15 @@ def run_visualization_demo(solution, problem, save_plots=False):
 
         # Plot convergence
         print("Generating convergence plot...")
-        conv_fig = visualizer.plot_convergence(solution.solver.convergence_history)
+        # Prefer explicit convergence_history argument; otherwise attempt to read from solution.solver
+        conv_hist = convergence_history
+        if conv_hist is None:
+            solver_obj = getattr(solution, "solver", None)
+            conv_hist = (
+                getattr(solver_obj, "convergence_history", []) if solver_obj else []
+            )
+
+        conv_fig = visualizer.plot_convergence(conv_hist)
 
         if save_plots:
             conv_filename = (
@@ -385,6 +436,10 @@ Examples:
     )
 
     parser.add_argument(
+        "--live", action="store_true", help="Enable live plotting during optimization"
+    )
+
+    parser.add_argument(
         "--save-results", action="store_true", help="Save results to JSON file"
     )
 
@@ -412,7 +467,9 @@ Examples:
         if args.demo == "basic":
             solution, problem, solver = run_basic_demonstration()
         elif args.demo == "comprehensive":
-            solution, problem, solver, analysis = run_comprehensive_demonstration()
+            solution, problem, solver, analysis = run_comprehensive_demonstration(
+                live=getattr(args, "live", False)
+            )
         elif args.demo == "benchmark":
             results = run_benchmark_demonstration()
             return
@@ -433,45 +490,43 @@ Examples:
         print(f"Routes: {len(solution.routes)}")
 
     else:
-        # Default: run comprehensive demonstration
-        # Create the comprehensive problem instance and ensure the solver has enough vehicles
-        # to feasibly attempt a full assignment before running the optimizer.
-        problem = create_comprehensive_instance()
-
-        try:
-            min_needed = int(problem.get_min_vehicles_needed())
-            if (
-                getattr(problem, "number_of_vehicles", None) is None
-                or problem.number_of_vehicles < min_needed
-            ):
-                problem.number_of_vehicles = min_needed
-                print(
-                    f"Note: adjusted problem.number_of_vehicles to minimum required: {problem.number_of_vehicles}"
-                )
-        except Exception:
-            # If anything goes wrong here, continue — the subsequent feasibility check will catch issues.
-            pass
-
-        # Sanity / feasibility check: if instance is still infeasible, warn and exit early.
-        feasible_flag, feasible_msg = problem.is_feasible()
-        print(f"\nProblem: {problem}")
-        print(
-            f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
+        # Default: run comprehensive demonstration (respect --live if provided)
+        solution, problem, solver, analysis = run_comprehensive_demonstration(
+            live=getattr(args, "live", False)
         )
-        print(f"Vehicle Capacity: {problem.vehicle_capacity}")
-        if not feasible_flag:
-            print(f"Problem feasibility check: {feasible_flag} ({feasible_msg})")
-            print(
-                "Instance is infeasible with the current settings. Adjust vehicle capacity or number_of_vehicles and retry."
-            )
-            return
+        # Optionally enable live plotting by wiring an iteration callback on the solver
+        visualizer = None
+        if getattr(args, "live", False):
+            try:
+                visualizer = RouteVisualizer(problem, live=True)
+                visualizer.start_live(title=f"Live - {problem.name}")
 
-        # Initialize solver with configured iterations and run
-        solver = ALNS(problem)
-        solver.max_iterations = args.iterations
+                def _iteration_callback(iteration_idx, best_solution):
+                    try:
+                        visualizer.update_live(
+                            best_solution, getattr(solver, "convergence_history", [])
+                        )
+                    except Exception:
+                        pass
+
+                solver.iteration_callback = _iteration_callback
+                print("Live plotting enabled for comprehensive demonstration.")
+            except Exception:
+                visualizer = None
+
         start_time = time.time()
         solution = solver.run(max_iterations=solver.max_iterations)
         end_time = time.time()
+
+        # If live plotting was enabled, do a final update and stop interactive mode.
+        if visualizer is not None:
+            try:
+                visualizer.update_live(
+                    solution, getattr(solver, "convergence_history", [])
+                )
+                visualizer.stop_live()
+            except Exception:
+                pass
 
         # Analyze solution
         analyzer = PerformanceAnalyzer(problem)

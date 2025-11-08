@@ -6,9 +6,14 @@ import random
 import math
 import time
 from typing import List, Tuple, Dict, Optional
-from .solution import Solution
+from .solution import Solution, Route
 from .problem import ProblemInstance
-from .repair_operators import RepairOperatorManager
+from .repair_operators import (
+    RepairOperatorManager,
+    enforce_if_visits,
+    recalc_loads,
+    route_is_feasible,
+)
 from .destroy_operators import DestroyOperatorManager
 
 
@@ -149,7 +154,145 @@ class ALNS:
         print(f"Final best solution: {self.best_solution.total_cost:.2f}")
         print(f"Total iterations: {self.max_iterations}")
 
+        # Post-process: attempt to greedily insert any remaining unassigned customers
+        # into existing routes (or create new routes up to the available fleet).
+        # This helps finalize solutions and reduce leftover unassigned customers.
+        try:
+            _post_process_assignment(self, self.best_solution)
+            # Recalculate final aggregated metrics and penalized cost
+            self.best_solution.calculate_metrics()
+            self.best_solution.total_cost = self._calculate_total_cost(
+                self.best_solution
+            )
+            print("Post-processing complete: attempted to assign remaining customers.")
+            print(
+                f"Final best solution (post-process): {self.best_solution.total_cost:.2f}"
+            )
+        except Exception:
+            # Fail-safe: do not break on post-process errors
+            pass
+
         return self.best_solution
+
+
+# ----------------------------------------------------------------------
+# Module-level helper: post-processing finalizer
+# Kept at module level to avoid altering class layout while still giving
+# the routine access to solver internals when passed `self`.
+# ----------------------------------------------------------------------
+def _post_process_assignment(solver: "ALNS", solution: Solution) -> None:
+    """
+    Greedy post-processing to insert any unassigned customers into existing routes
+    or by creating new routes up to the problem's `number_of_vehicles`.
+
+    This routine is intentionally simple: it tries feasible insertions (respecting IFs
+    via `enforce_if_visits`) and stops when no further assignments are possible.
+    """
+    problem = solver.problem
+
+    # Build quick id->Location map for customers
+    id_to_customer = {c.id: c for c in getattr(problem, "customers", [])}
+
+    # Determine unassigned customer IDs (solution.unassigned_customers is the canonical store)
+    unassigned_ids = set(getattr(solution, "unassigned_customers", set()) or set())
+
+    # Defensive exit if nothing to do
+    if not unassigned_ids:
+        return
+
+    max_vehicles = (
+        int(problem.number_of_vehicles)
+        if getattr(problem, "number_of_vehicles", None)
+        else len(solution.routes) or 1
+    )
+
+    made_progress = True
+    # iterate until no more placements in a full pass
+    while unassigned_ids and made_progress:
+        made_progress = False
+        for cust_id in list(unassigned_ids):
+            customer = id_to_customer.get(cust_id)
+            if customer is None:
+                # unknown customer id: drop it
+                unassigned_ids.discard(cust_id)
+                continue
+
+            placed = False
+
+            # Try to insert into existing routes at any position
+            for route in solution.routes:
+                # try positions between nodes (1 .. len-1)
+                for pos in range(1, max(1, len(route.nodes))):
+                    # build tentative route
+                    tentative = Route()
+                    tentative.nodes = route.nodes.copy()
+                    tentative.nodes.insert(pos, customer)
+                    tentative.loads = recalc_loads(tentative)
+
+                    # enforce IF visits on tentative route
+                    try:
+                        ok = enforce_if_visits(tentative, problem)
+                    except Exception:
+                        ok = False
+
+                    if not ok:
+                        continue
+
+                    # check capacity feasibility
+                    try:
+                        feasible = route_is_feasible(tentative, problem)
+                    except Exception:
+                        feasible = False
+
+                    if feasible:
+                        # perform the insertion on the real route and enforce IFs there
+                        route.nodes.insert(pos, customer)
+                        try:
+                            enforce_if_visits(route, problem)
+                        except Exception:
+                            pass
+                        route.loads = recalc_loads(route)
+                        placed = True
+                        break
+                if placed:
+                    break
+
+            # If not placed, attempt to create a new route if fleet allows
+            if (
+                not placed
+                and len(
+                    [
+                        r
+                        for r in solution.routes
+                        if r.nodes
+                        and any(getattr(n, "type", None) == "customer" for n in r.nodes)
+                    ]
+                )
+                < max_vehicles
+            ):
+                nr = Route()
+                nr.nodes = [problem.depot, customer, problem.depot]
+                nr.loads = recalc_loads(nr)
+                try:
+                    ok = enforce_if_visits(nr, problem)
+                except Exception:
+                    ok = False
+                if ok and route_is_feasible(nr, problem):
+                    solution.routes.append(nr)
+                    placed = True
+
+            if placed:
+                unassigned_ids.discard(cust_id)
+                made_progress = True
+
+        # end for each customer
+
+    # write back remaining unassigned ids into solution object
+    try:
+        solution.unassigned_customers = set(unassigned_ids)
+    except Exception:
+        # best-effort: ignore failures writing back
+        pass
 
     def _generate_initial_solution(self) -> Solution:
         """Generate initial feasible solution using a simple nearest-neighbour construction.

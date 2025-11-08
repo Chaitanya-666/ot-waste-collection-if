@@ -122,14 +122,22 @@ class RouteVisualizer:
         self._draw_base_map(title)
 
         # Plot routes on top
+        # Plot routes (show only routes that serve at least one customer)
+        display_idx = 0
         for i, route in enumerate(solution.routes):
-            if not route.nodes:
+            # count customers on route (defensive access)
+            customers_on_route = sum(
+                1 for n in route.nodes if getattr(n, "type", None) == "customer"
+            )
+            if customers_on_route == 0:
+                # skip empty placeholder routes
                 continue
 
-            color = self.colors[i % len(self.colors)]
+            color = self.colors[display_idx % len(self.colors)]
             route_x = [node.x for node in route.nodes]
             route_y = [node.y for node in route.nodes]
 
+            # Plot route line
             self.ax.plot(
                 route_x,
                 route_y,
@@ -137,38 +145,36 @@ class RouteVisualizer:
                 color=color,
                 linewidth=2,
                 alpha=0.8,
-                label=f"Vehicle {i + 1}",
+                label=f"Vehicle {display_idx + 1}",
             )
 
             # Plot route points and annotate IFs/customers
             for j, node in enumerate(route.nodes):
-                if node.type == "depot":
+                if getattr(node, "type", None) == "depot":
                     continue
-                elif node.type == "if":
+                elif getattr(node, "type", None) == "if":
                     self.ax.plot(
-                        node.x, node.y, "D", color=color, markersize=8, zorder=4
+                        node.x, node.y, "D", color=color, markersize=10, zorder=4
                     )
                 else:  # customer
                     self.ax.plot(
-                        node.x, node.y, "o", color=color, markersize=5, zorder=3
+                        node.x, node.y, "o", color=color, markersize=8, zorder=3
                     )
 
             # Add route info (distance) near route midpoint
             mid_idx = len(route.nodes) // 2
             if mid_idx < len(route.nodes):
                 mid_node = route.nodes[mid_idx]
-                try:
-                    txt = f"V{i + 1}\n{route.total_distance:.1f}"
-                except Exception:
-                    txt = f"V{i + 1}"
                 self.ax.annotate(
-                    txt,
+                    f"V{display_idx + 1}\n{route.total_distance:.1f}",
                     (mid_node.x, mid_node.y),
-                    xytext=(8, 8),
+                    xytext=(10, 10),
                     textcoords="offset points",
-                    fontsize=7,
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor=color, alpha=0.6),
+                    fontsize=8,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.7),
                 )
+
+            display_idx += 1
 
         plt.tight_layout()
         return self.fig
@@ -274,12 +280,18 @@ class PerformanceAnalyzer:
         self.problem = problem
 
     def analyze_solution(self, solution: Solution) -> Dict:
-        """Comprehensive solution analysis"""
+        """Comprehensive solution analysis
+
+        This analyzer filters out empty placeholder routes (those serving zero customers)
+        when computing vehicle-level metrics and efficiencies so reports focus on
+        vehicles that actually perform service.
+        """
         analysis = {
             "total_cost": solution.total_cost,
             "total_distance": solution.total_distance,
             "total_time": solution.total_time,
-            "num_vehicles": len(solution.routes),
+            # number of vehicles considered = vehicles actually serving customers (non-empty)
+            "num_vehicles": 0,
             "num_unassigned": len(solution.unassigned_customers),
             "vehicle_utilization": [],
             "if_visits": 0,
@@ -287,21 +299,33 @@ class PerformanceAnalyzer:
             "efficiency_metrics": {},
         }
 
-        total_capacity = self.problem.vehicle_capacity * len(solution.routes)
+        # consider only routes that serve at least one customer for vehicle-level metrics
+        served_routes = [
+            r
+            for r in solution.routes
+            if any(getattr(n, "type", None) == "customer" for n in r.nodes)
+        ]
+        analysis["num_vehicles"] = len(served_routes)
+
+        total_capacity = self.problem.vehicle_capacity * max(1, len(served_routes))
         total_demand = sum(customer.demand for customer in self.problem.customers)
 
-        for i, route in enumerate(solution.routes):
+        for idx, route in enumerate(served_routes):
             route_analysis = {
-                "vehicle_id": i + 1,
+                "vehicle_id": idx + 1,
                 "distance": route.total_distance,
                 "time": route.total_time,
                 "nodes": len(route.nodes),
                 "customers_served": sum(
-                    1 for node in route.nodes if node.type == "customer"
+                    1
+                    for node in route.nodes
+                    if getattr(node, "type", None) == "customer"
                 ),
-                "if_visits": sum(1 for node in route.nodes if node.type == "if"),
+                "if_visits": sum(
+                    1 for node in route.nodes if getattr(node, "type", None) == "if"
+                ),
                 "max_load": max(route.loads) if route.loads else 0,
-                "load_utilization": max(route.loads) / self.problem.vehicle_capacity
+                "load_utilization": (max(route.loads) / self.problem.vehicle_capacity)
                 if route.loads
                 else 0,
             }
@@ -310,7 +334,8 @@ class PerformanceAnalyzer:
             analysis["if_visits"] += route_analysis["if_visits"]
             analysis["vehicle_utilization"].append(route_analysis["load_utilization"])
 
-        # Calculate efficiency metrics
+        # Calculate efficiency metrics (guard denominators)
+        num_served_routes = len(served_routes)
         analysis["efficiency_metrics"] = {
             "distance_efficiency": total_demand / solution.total_distance
             if solution.total_distance > 0
@@ -319,9 +344,11 @@ class PerformanceAnalyzer:
             if total_capacity > 0
             else 0,
             "vehicle_efficiency": total_demand
-            / (len(solution.routes) * self.problem.vehicle_capacity),
-            "if_efficiency": analysis["if_visits"] / len(solution.routes)
-            if solution.routes
+            / (num_served_routes * self.problem.vehicle_capacity)
+            if num_served_routes > 0
+            else 0,
+            "if_efficiency": analysis["if_visits"] / num_served_routes
+            if num_served_routes > 0
             else 0,
         }
 
