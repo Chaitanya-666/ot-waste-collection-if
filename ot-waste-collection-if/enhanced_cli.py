@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
 """
-Enhanced CLI for the OT Waste Collection project
+Enhanced CLI for the OT Waste Collection project (improved imports & config handling)
 
-Provides higher-level command-line utilities for:
- - Running ALNS with configuration files
- - Constructing initial solutions with enhanced heuristics
- - Running the benchmarking suite
- - Validating solutions with detailed reports
+This CLI is an orchestration layer that uses core project modules (ALNS, data_generator,
+utils, enhanced construction, benchmarking, and validator). It intentionally does not
+modify core algorithmic code. Improvements in this version:
 
-This tool is intentionally non-intrusive: it uses existing modules (ALNS, data generator,
-enhanced construction, benchmarking, and validator) and does not modify core algorithm code.
-It focuses on orchestration, convenience, and producing human-readable outputs.
+- More robust import resolution:
+  * Tries package-relative `src.*` imports
+  * Falls back to top-level imports
+  * If imports still fail, attempts to add the repository's package directory to PYTHONPATH
+    automatically (when run from the repo root)
+  * Gives detailed error messages explaining how to run the CLI in the correct context
 
-Usage examples:
-  # Run ALNS solver using a config file
-  python enhanced_cli.py solve --config config.json --iterations 500 --save-results
+- Improved configuration/template handling:
+  * Supports passing either:
+      - a path to a JSON configuration file via `--config /path/to/config.json`
+      - a template key matching entries inside the `config_templates` JSON blob shipped
+        in the package
+  * Loads `config_templates` automatically from the package dir if present
+  * Config merging: top-level CLI flags (like --iterations) override config contents
 
-  # Construct an initial solution using enhanced constructions
-  python enhanced_cli.py construct --strategy cluster_based --save-results
-
-  # Run full benchmark suite
-  python enhanced_cli.py benchmark --algorithms alns nearest_neighbor savings --runs 3 --out report.json
-
-  # Validate a saved solution file (JSON created by utils.save_solution_to_file)
-  python enhanced_cli.py validate --solution-file outputs/solution.json --report-file outputs/validation.txt
+- Friendly usage and error messages for common developer mistakes
 """
 
 from __future__ import annotations
@@ -35,22 +33,68 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Prefer package-relative imports when possible; fall back to non-package imports.
-try:
-    from src.data_generator import DataGenerator  # type: ignore
-    from src.alns import ALNS  # type: ignore
-    from src.utils import save_solution_to_file, load_solution_from_file  # type: ignore
-    from src.enhanced_construction import (
-        EnhancedConstructionHeuristics,
-        ConstructionStrategy,
-    )  # type: ignore
-    from src.benchmarking import BenchmarkingFramework, AlgorithmType  # type: ignore
-    from src.enhanced_validator import EnhancedSolutionValidator  # type: ignore
-except Exception:
+# Basic logger
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger("enhanced_cli")
+
+
+# ---------------------------------------------------------------------------
+# Import resolution helpers
+# ---------------------------------------------------------------------------
+def try_imports():
+    """
+    Try multiple import strategies to import project modules used by the CLI.
+
+    Returns a dict with module references (or None) and an `error` if import failed.
+    """
+    modules = {
+        "DataGenerator": None,
+        "ALNS": None,
+        "save_solution_to_file": None,
+        "load_solution_from_file": None,
+        "EnhancedConstructionHeuristics": None,
+        "ConstructionStrategy": None,
+        "BenchmarkingFramework": None,
+        "AlgorithmType": None,
+        "EnhancedSolutionValidator": None,
+        "import_error": None,
+    }
+
+    # First attempt: package-relative imports from `src.*`
     try:
-        # fallback: assume running from package root where modules are top-level
+        from src.data_generator import DataGenerator  # type: ignore
+        from src.alns import ALNS  # type: ignore
+        from src.utils import save_solution_to_file, load_solution_from_file  # type: ignore
+        from src.enhanced_construction import (
+            EnhancedConstructionHeuristics,
+            ConstructionStrategy,
+        )  # type: ignore
+        from src.benchmarking import BenchmarkingFramework, AlgorithmType  # type: ignore
+        from src.enhanced_validator import EnhancedSolutionValidator  # type: ignore
+
+        modules.update(
+            {
+                "DataGenerator": DataGenerator,
+                "ALNS": ALNS,
+                "save_solution_to_file": save_solution_to_file,
+                "load_solution_from_file": load_solution_from_file,
+                "EnhancedConstructionHeuristics": EnhancedConstructionHeuristics,
+                "ConstructionStrategy": ConstructionStrategy,
+                "BenchmarkingFramework": BenchmarkingFramework,
+                "AlgorithmType": AlgorithmType,
+                "EnhancedSolutionValidator": EnhancedSolutionValidator,
+            }
+        )
+        return modules
+    except Exception as e1:
+        modules["import_error"] = e1
+        # Continue to next attempt
+
+    # Second attempt: top-level imports (when running from package dir)
+    try:
         from data_generator import DataGenerator  # type: ignore
         from alns import ALNS  # type: ignore
         from utils import save_solution_to_file, load_solution_from_file  # type: ignore
@@ -60,96 +104,183 @@ except Exception:
         )  # type: ignore
         from benchmarking import BenchmarkingFramework, AlgorithmType  # type: ignore
         from enhanced_validator import EnhancedSolutionValidator  # type: ignore
+
+        modules.update(
+            {
+                "DataGenerator": DataGenerator,
+                "ALNS": ALNS,
+                "save_solution_to_file": save_solution_to_file,
+                "load_solution_from_file": load_solution_from_file,
+                "EnhancedConstructionHeuristics": EnhancedConstructionHeuristics,
+                "ConstructionStrategy": ConstructionStrategy,
+                "BenchmarkingFramework": BenchmarkingFramework,
+                "AlgorithmType": AlgorithmType,
+                "EnhancedSolutionValidator": EnhancedSolutionValidator,
+            }
+        )
+        return modules
+    except Exception as e2:
+        # store the second error if first wasn't present
+        if modules["import_error"] is None:
+            modules["import_error"] = e2
+
+    # Third attempt: try to detect repository structure and add package dir to sys.path.
+    # If this file is located at .../ot-waste-collection-if/ot-waste-collection-if/enhanced_cli.py
+    # the package dir we want to add is .../ot-waste-collection-if/ot-waste-collection-if
+    try:
+        current_file = Path(__file__).resolve()
+        # Walk upward to find a directory that contains 'src' or looks like the package root.
+        candidate = current_file.parent
+        found = None
+        for _ in range(6):
+            if (candidate / "src").is_dir() or (candidate / "__init__.py").exists():
+                found = candidate
+                break
+            candidate = candidate.parent
+        if found:
+            if str(found) not in sys.path:
+                sys.path.insert(0, str(found))
+                logger.debug(f"Inserted {found} into sys.path for imports")
+            # Try the top-level imports again
+            from data_generator import DataGenerator  # type: ignore
+            from alns import ALNS  # type: ignore
+            from utils import save_solution_to_file, load_solution_from_file  # type: ignore
+            from enhanced_construction import (
+                EnhancedConstructionHeuristics,
+                ConstructionStrategy,
+            )  # type: ignore
+            from benchmarking import BenchmarkingFramework, AlgorithmType  # type: ignore
+            from enhanced_validator import EnhancedSolutionValidator  # type: ignore
+
+            modules.update(
+                {
+                    "DataGenerator": DataGenerator,
+                    "ALNS": ALNS,
+                    "save_solution_to_file": save_solution_to_file,
+                    "load_solution_from_file": load_solution_from_file,
+                    "EnhancedConstructionHeuristics": EnhancedConstructionHeuristics,
+                    "ConstructionStrategy": ConstructionStrategy,
+                    "BenchmarkingFramework": BenchmarkingFramework,
+                    "AlgorithmType": AlgorithmType,
+                    "EnhancedSolutionValidator": EnhancedSolutionValidator,
+                }
+            )
+            return modules
+    except Exception as e3:
+        # augment import_error for diagnostics
+        modules["import_error"] = modules.get("import_error") or e3
+
+    return modules
+
+
+# Perform import attempts once
+_MODULES = try_imports()
+
+
+# ---------------------------------------------------------------------------
+# Configuration / template loading
+# ---------------------------------------------------------------------------
+def locate_config_templates() -> Optional[Path]:
+    """
+    Try to find the `config_templates` JSON file shipped in the package.
+    Returns a Path or None.
+    """
+    # Common locations (relative to this file)
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / "config_templates",
+        here / "config_templates.json",
+        here.parent / "config_templates",
+        here.parent / "config_templates.json",
+        here.parent / "config_templates.json",
+        Path("config_templates"),
+        Path("config_templates.json"),
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return c
+    return None
+
+
+def load_config_templates() -> Dict[str, Any]:
+    """
+    Load templates from the `config_templates` JSON file if available.
+    Returns an empty dict if not found or on read error.
+    """
+    path = locate_config_templates()
+    if not path:
+        logger.debug("No config_templates file found in known locations.")
+        return {}
+
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            else:
+                logger.warning(
+                    f"config_templates at {path} does not contain a JSON object."
+                )
+                return {}
     except Exception as e:
-        # If imports fail, we will handle this later with descriptive errors.
-        ALNS = None  # type: ignore
-        DataGenerator = None  # type: ignore
-        save_solution_to_file = None  # type: ignore
-        load_solution_from_file = None  # type: ignore
-        EnhancedConstructionHeuristics = None  # type: ignore
-        ConstructionStrategy = None  # type: ignore
-        BenchmarkingFramework = None  # type: ignore
-        AlgorithmType = None  # type: ignore
-        EnhancedSolutionValidator = None  # type: ignore
-        _import_error = e  # store for diagnostics
-
-# Configure basic logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-logger = logging.getLogger("enhanced_cli")
+        logger.warning(f"Failed to load config_templates from {path}: {e}")
+        return {}
 
 
-def load_json_file(path: str) -> Dict[str, Any]:
-    """Load JSON file and return dict."""
-    with open(path, "r") as f:
-        return json.load(f)
+# Preload templates (will be empty if file not present)
+_CONFIG_TEMPLATES = load_config_templates()
 
 
-def apply_algorithm_config(solver: "ALNS", cfg: Dict[str, Any]) -> None:
-    """Apply top-level algorithm configuration to an ALNS instance (non-destructive)."""
-    if solver is None:
-        return
+def resolve_config(config_arg: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Resolve user-provided config argument.
+    - If config_arg is None -> return None
+    - If config_arg is a path to a file -> load and return JSON
+    - If config_arg matches a key in the templates -> return that template dict
+    - Otherwise, return None and print helpful message
+    """
+    if not config_arg:
+        return None
 
-    alg_cfg = cfg.get("algorithm", {})
-    if "max_iterations" in alg_cfg:
-        solver.max_iterations = int(alg_cfg["max_iterations"])
-    if "seed" in alg_cfg:
+    p = Path(config_arg)
+    # 1) If it's an existing file, load it
+    if p.exists() and p.is_file():
         try:
-            solver.seed = int(alg_cfg["seed"])
-        except Exception:
-            pass
-    if "temperature" in alg_cfg:
-        try:
-            solver.temperature = float(alg_cfg["temperature"])
-        except Exception:
-            pass
-    if "cooling_rate" in alg_cfg:
-        try:
-            solver.cooling_rate = float(alg_cfg["cooling_rate"])
-        except Exception:
-            pass
-    if "learning_rate" in alg_cfg:
-        try:
-            solver.learning_rate = float(alg_cfg["learning_rate"])
-        except Exception:
-            pass
-    if "adaptive_period" in alg_cfg:
-        try:
-            solver.adaptive_period = int(alg_cfg["adaptive_period"])
-        except Exception:
-            pass
+            with open(p, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read config file {p}: {e}")
+            return None
 
-    # Optionally apply operator weights if provided
-    destroy_cfg = cfg.get("destroy_operators", {})
-    repair_cfg = cfg.get("repair_operators", {})
+    # 2) If it's a template key
+    if _CONFIG_TEMPLATES and config_arg in _CONFIG_TEMPLATES:
+        logger.debug(
+            f"Loaded configuration template '{config_arg}' from config_templates."
+        )
+        return _CONFIG_TEMPLATES[config_arg]
 
+    # 3) Not found: attempt to treat it as a JSON string
     try:
-        # Assign destroy weights
-        for name, params in destroy_cfg.items():
-            weight = params.get("weight")
-            if (
-                weight is not None
-                and getattr(solver, "destroy_weights", None) is not None
-            ):
-                if name in solver.destroy_weights:
-                    solver.destroy_weights[name] = float(weight)
+        parsed = json.loads(config_arg)
+        if isinstance(parsed, dict):
+            logger.debug("Parsed --config argument as inline JSON.")
+            return parsed
     except Exception:
-        logger.debug("Unable to apply destroy operator weights - skipping")
+        pass
 
-    try:
-        # Assign repair weights
-        for name, params in repair_cfg.items():
-            weight = params.get("weight")
-            # repair operators are stored by name in solver.repair_weights
-            if (
-                weight is not None
-                and getattr(solver, "repair_weights", None) is not None
-            ):
-                if name in solver.repair_weights:
-                    solver.repair_weights[name] = float(weight)
-    except Exception:
-        logger.debug("Unable to apply repair operator weights - skipping")
+    logger.error(
+        f"Config argument '{config_arg}' not recognized. It must be: path/to/config.json, a template name from config_templates, or inline JSON."
+    )
+    if _CONFIG_TEMPLATES:
+        logger.info(
+            f"Available templates: {', '.join(list(_CONFIG_TEMPLATES.keys())[:10])}"
+        )
+    return None
 
 
+# ---------------------------------------------------------------------------
+# CLI operations (orchestration only)
+# ---------------------------------------------------------------------------
 def run_solver_on_instance(
     problem: Any,
     cfg: Optional[Dict[str, Any]] = None,
@@ -159,43 +290,70 @@ def run_solver_on_instance(
 ) -> Any:
     """
     Run the ALNS solver on a given ProblemInstance.
-
-    Returns the solution object (as produced by solver.run()).
+    Uses the imported ALNS implementation resolved earlier.
     """
+    ALNS = _MODULES.get("ALNS")
+    save_solution_to_file = _MODULES.get("save_solution_to_file")
     if ALNS is None:
         raise RuntimeError(
-            "ALNS implementation not available in imports. Check project layout."
+            "ALNS implementation not available. Ensure you run this script from the project root or install the package."
         )
 
     solver = ALNS(problem)
 
-    # Apply config (if provided)
+    # Apply cfg options to solver (non-destructive)
     if cfg:
-        apply_algorithm_config(solver, cfg)
+        try:
+            alg_cfg = cfg.get("algorithm", {})
+            if "max_iterations" in alg_cfg:
+                solver.max_iterations = int(alg_cfg["max_iterations"])
+            if "seed" in alg_cfg:
+                solver.seed = int(alg_cfg["seed"])
+            if "temperature" in alg_cfg:
+                solver.temperature = float(alg_cfg["temperature"])
+            if "cooling_rate" in alg_cfg:
+                solver.cooling_rate = float(alg_cfg["cooling_rate"])
+            if "learning_rate" in alg_cfg:
+                solver.learning_rate = float(alg_cfg["learning_rate"])
+            if "adaptive_period" in alg_cfg:
+                solver.adaptive_period = int(alg_cfg["adaptive_period"])
+        except Exception:
+            logger.debug("Some algorithm config keys could not be applied to solver.")
 
-    # Override iterations if explicitly provided
     if iterations is not None:
         solver.max_iterations = int(iterations)
 
     logger.info(f"Running ALNS for up to {solver.max_iterations} iterations...")
-    start_time = time.time()
+    t0 = time.time()
     solution = solver.run(max_iterations=solver.max_iterations)
-    elapsed = time.time() - start_time
-    logger.info(f"ALNS finished in {elapsed:.3f}s")
+    elapsed = time.time() - t0
+    logger.info(
+        f"ALNS finished in {elapsed:.3f}s — cost: {getattr(solution, 'total_cost', float('nan'))}"
+    )
 
-    # Optionally save results
+    # Save solution if requested
     if save_results:
         if save_solution_to_file is None:
-            logger.warning("save_solution_to_file not available; cannot save results.")
+            logger.warning(
+                "save_solution_to_file utility not available; cannot save solution."
+            )
         else:
             os.makedirs(results_dir, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join(results_dir, f"solution_{timestamp}.json")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_path = os.path.join(results_dir, f"solution_{ts}.json")
             try:
-                save_solution_to_file(solution, filename)
-                logger.info(f"Solution saved to: {filename}")
+                # Some save helpers accept (solution, problem, filename) others only (solution, filename)
+                # Try both patterns gracefully.
+                try:
+                    save_solution_to_file(solution, out_path)
+                except TypeError:
+                    # maybe expects (solution, problem, filename)
+                    save_solution_to_file(
+                        solution, getattr(solution, "problem", None), out_path
+                    )  # type: ignore
+                logger.info(f"Solution saved to {out_path}")
             except Exception as e:
-                logger.warning(f"Failed to save solution: {e}")
+                logger.warning(f"Failed to save solution to {out_path}: {e}")
 
     return solution
 
@@ -207,90 +365,82 @@ def run_construction(
     save_results: bool = False,
     results_dir: str = "outputs",
 ) -> Any:
-    """Run enhanced construction heuristics and return the best constructed Solution."""
-    if EnhancedConstructionHeuristics is None or ConstructionStrategy is None:
-        raise RuntimeError(
-            "Enhanced construction module not available in imports. Check project layout."
-        )
+    """
+    Run enhanced construction heuristics and return the best constructed Solution.
+    """
+    EnhancedConstructionHeuristics = _MODULES.get("EnhancedConstructionHeuristics")
+    ConstructionStrategy = _MODULES.get("ConstructionStrategy")
+    save_solution_to_file = _MODULES.get("save_solution_to_file")
 
-    # Map strategy name to enum (if provided)
+    if EnhancedConstructionHeuristics is None or ConstructionStrategy is None:
+        raise RuntimeError("Enhanced construction module not available for import.")
+
+    heur = EnhancedConstructionHeuristics(problem)
+
     strategy = None
     if strategy_name:
+        # Accept either enum members or string names
         try:
             strategy = ConstructionStrategy(strategy_name)
         except Exception:
-            # Try to match by name ignoring case / underscores
             normalized = strategy_name.strip().lower().replace("-", "_")
             for s in ConstructionStrategy:
                 if s.value == normalized or s.name.lower() == normalized:
                     strategy = s
                     break
-    # Create heuristics object
-    heur = EnhancedConstructionHeuristics(problem)
 
-    best_result = None
     if multi_start <= 1:
         result = heur.construct_solution(strategy)
-        best_result = result
     else:
-        best_result = heur.multi_start_construction(num_starts=multi_start)
+        result = heur.multi_start_construction(num_starts=multi_start)
 
-    # Save result if requested
-    if save_results:
-        if save_solution_to_file is None:
-            logger.warning(
-                "save_solution_to_file not available; cannot save constructed solution."
-            )
-        else:
-            os.makedirs(results_dir, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join(results_dir, f"constructed_{timestamp}.json")
-            try:
-                save_solution_to_file(best_result.solution, filename)
-                logger.info(f"Constructed solution saved to: {filename}")
-            except Exception as e:
-                logger.warning(f"Failed to save constructed solution: {e}")
+    logger.info(
+        f"Constructed solution: cost={getattr(result.solution, 'total_cost', float('nan'))}, strategy={getattr(result, 'strategy', 'unknown')}"
+    )
 
-    return best_result
+    if save_results and save_solution_to_file:
+        os.makedirs(results_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = os.path.join(results_dir, f"constructed_{ts}.json")
+        try:
+            save_solution_to_file(result.solution, out_path)
+            logger.info(f"Constructed solution saved to {out_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save constructed solution: {e}")
+
+    return result
 
 
 def run_benchmark(
-    algorithms: List[str],
-    runs: int = 1,
-    out_file: Optional[str] = None,
-    seed: int = 42,
-) -> List[Any]:
-    """Run benchmarking suite for the requested algorithms."""
+    algorithms: List[str], runs: int = 1, out_file: Optional[str] = None, seed: int = 42
+):
+    """
+    Run benchmarking suite using the project's BenchmarkingFramework.
+    """
+    BenchmarkingFramework = _MODULES.get("BenchmarkingFramework")
+    AlgorithmType = _MODULES.get("AlgorithmType")
     if BenchmarkingFramework is None or AlgorithmType is None:
-        raise RuntimeError(
-            "Benchmarking module not available in imports. Check project layout."
-        )
+        raise RuntimeError("Benchmarking module not available for import.")
 
     framework = BenchmarkingFramework(seed=seed)
     framework.create_standard_benchmarks()
 
-    # Translate algorithm strings to AlgorithmType or available algorithm list
     alg_types = []
     for a in algorithms:
-        try:
-            # allow passing "alns" or "ALNS"
-            alg_types.append(AlgorithmType(a.lower()))
-        except Exception:
-            # try mapping common names
-            norm = a.strip().lower()
-            mapping = {
-                "alns": AlgorithmType.ALNS,
-                "nearest_neighbor": AlgorithmType.NEAREST_NEIGHBOR,
-                "savings": AlgorithmType.SAVINGS,
-                "random": AlgorithmType.RANDOM,
-            }
-            if norm in mapping:
-                alg_types.append(mapping[norm])
-            else:
-                logger.warning(f"Unknown algorithm '{a}' - skipping.")
+        norm = a.strip().lower()
+        mapping = {
+            "alns": AlgorithmType.ALNS,
+            "nearest_neighbor": AlgorithmType.NEAREST_NEIGHBOR,
+            "nearest": AlgorithmType.NEAREST_NEIGHBOR,
+            "savings": AlgorithmType.SAVINGS,
+            "random": AlgorithmType.RANDOM,
+        }
+        if norm in mapping:
+            alg_types.append(mapping[norm])
+        else:
+            logger.warning(f"Unknown algorithm '{a}' — skipping.")
 
     if not alg_types:
-        # default: run a small set
         alg_types = [
             AlgorithmType.ALNS,
             AlgorithmType.NEAREST_NEIGHBOR,
@@ -299,10 +449,10 @@ def run_benchmark(
 
     results = framework.run_benchmark_suite(alg_types, iterations_per_algorithm=runs)
 
-    # Optionally save benchmark report
     if out_file:
         try:
             report = framework.generate_benchmark_report(results)
+            os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
             with open(out_file, "w") as f:
                 f.write(report)
             logger.info(f"Benchmark report written to {out_file}")
@@ -313,27 +463,22 @@ def run_benchmark(
 
 
 def validate_solution_file(
-    solution_file: str,
-    report_file: Optional[str] = None,
-    benchmark: bool = False,
-) -> Any:
+    solution_file: str, report_file: Optional[str] = None, benchmark: bool = False
+):
     """
     Validate a saved solution JSON file and optionally write a textual report.
-
-    Expects a solution file format compatible with `utils.save_solution_to_file`.
     """
-    if load_solution_from_file is None or EnhancedSolutionValidator is None:
-        raise RuntimeError(
-            "Validation utilities not available in imports. Check project layout."
-        )
+    load_solution_from_file = _MODULES.get("load_solution_from_file")
+    EnhancedSolutionValidator = _MODULES.get("EnhancedSolutionValidator")
 
-    logger.info(f"Loading solution from: {solution_file}")
+    if load_solution_from_file is None or EnhancedSolutionValidator is None:
+        raise RuntimeError("Validation utilities not available for import.")
+
+    logger.info(f"Loading solution from {solution_file}")
     solution = load_solution_from_file(solution_file)
     if getattr(solution, "problem", None) is None:
-        # If problem reference is missing from loaded solution, attempt to rebuild from metadata
-        logger.debug(
-            "Loaded solution missing problem reference. Attempting to reconstruct problem from solution data."
-        )
+        logger.debug("Loaded solution missing embedded problem reference (if any).")
+
     validator = EnhancedSolutionValidator(solution.problem)
     result = validator.validate_solution(
         solution, check_quality=True, benchmark=benchmark
@@ -345,37 +490,36 @@ def validate_solution_file(
             os.makedirs(os.path.dirname(report_file) or ".", exist_ok=True)
             with open(report_file, "w") as f:
                 f.write(report_text)
-            logger.info(f"Validation report saved to: {report_file}")
+            logger.info(f"Validation report written to {report_file}")
         except Exception as e:
-            logger.warning(f"Failed to save validation report: {e}")
+            logger.warning(f"Failed to write validation report: {e}")
     else:
-        # Print to stdout
         print(report_text)
 
     return result
 
 
-def ensure_data_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
-
+# ---------------------------------------------------------------------------
+# CLI wiring
+# ---------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="enhanced_cli.py",
-        description="Enhanced CLI for OT Waste Collection - configuration, benchmarking, validation, construction helpers",
+        description="Enhanced CLI for OT Waste Collection (config/template aware)",
     )
 
     sub = p.add_subparsers(dest="command", required=True)
 
-    # Solve command
+    # Solve
     solve_p = sub.add_parser(
         "solve", help="Run ALNS solver on a generated or provided instance"
     )
-    solve_p.add_argument("--config", help="Path to configuration JSON file (optional)")
-    solve_p.add_argument("--instance", help="Path to instance JSON file (optional)")
     solve_p.add_argument(
-        "--iterations", type=int, help="Override iterations (max_iterations)"
+        "--config",
+        help="Path to JSON config file or template name from config_templates",
     )
+    solve_p.add_argument("--instance", help="Path to instance JSON file (optional)")
+    solve_p.add_argument("--iterations", type=int, help="Override iterations")
     solve_p.add_argument(
         "--save-results", action="store_true", help="Save solution to outputs/"
     )
@@ -383,36 +527,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--results-dir", default="outputs", help="Directory to save outputs"
     )
 
-    # Construct command
-    construct_p = sub.add_parser(
+    # Construct
+    cs_p = sub.add_parser(
         "construct", help="Construct initial solution(s) using enhanced heuristics"
     )
-    construct_p.add_argument(
+    cs_p.add_argument(
         "--strategy", help="Construction strategy (e.g., cluster_based, greedy_nearest)"
     )
-    construct_p.add_argument(
-        "--multi-start", type=int, default=1, help="Multi-start attempts"
+    cs_p.add_argument(
+        "--multi-start", type=int, default=1, help="Number of multi-start attempts"
     )
-    construct_p.add_argument(
+    cs_p.add_argument(
         "--save-results", action="store_true", help="Save constructed solution"
     )
-    construct_p.add_argument(
+    cs_p.add_argument(
         "--results-dir", default="outputs", help="Directory to save outputs"
     )
-    construct_p.add_argument("--instance", help="Path to instance JSON file (optional)")
+    cs_p.add_argument("--instance", help="Path to instance JSON file (optional)")
 
-    # Benchmark command
+    # Benchmark
     bench_p = sub.add_parser("benchmark", help="Run benchmarking suite")
     bench_p.add_argument(
         "--algorithms",
         nargs="+",
         default=["alns", "nearest_neighbor", "savings"],
-        help="List of algorithms to benchmark",
+        help="Algorithms to benchmark",
     )
     bench_p.add_argument("--runs", type=int, default=1, help="Runs per algorithm")
     bench_p.add_argument("--out", help="Output file for benchmark report (text)")
 
-    # Validate command
+    # Validate
     val_p = sub.add_parser("validate", help="Validate a saved solution JSON file")
     val_p.add_argument(
         "--solution-file", required=True, help="Path to a saved solution JSON file"
@@ -426,7 +570,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include benchmark metrics in validation",
     )
 
-    # Misc
     p.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     p.add_argument(
         "--seed",
@@ -445,65 +588,80 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
-    # Quick import validation
-    if ALNS is None or DataGenerator is None:
+    # Quick import validation with helpful message
+    if _MODULES.get("ALNS") is None or _MODULES.get("DataGenerator") is None:
+        logger.error("Required project modules are not available for import.")
         logger.error(
-            "Project imports not available. Ensure you're running from the project root and that src/ is importable."
+            "Make sure you run this script from the project root, or set PYTHONPATH so the `src` package is importable."
         )
-        try:
-            logger.debug(f"Import error: {_import_error}")  # may exist
-        except Exception:
-            pass
+        logger.error("Example (from repo root):")
+        logger.error(
+            "  PYTHONPATH=ot-waste-collection-if/ot-waste-collection-if python3 enhanced_cli.py --help"
+        )
+        logger.debug(f"Import diagnostic: {_MODULES.get('import_error')}")
         return 2
 
     seed = getattr(args, "seed", 42)
 
     try:
         if args.command == "solve":
-            cfg = None
-            if args.config:
-                cfg = load_json_file(args.config)
-            # If an instance file is provided, load it, else create a small default instance
+            cfg = resolve_config(args.config) if getattr(args, "config", None) else None
+
+            # Load or generate problem
             if args.instance:
-                problem = DataGenerator.load_instance_from_file(args.instance)
+                try:
+                    problem = _MODULES["DataGenerator"].load_instance_from_file(
+                        args.instance
+                    )  # type: ignore
+                except Exception as e:
+                    logger.error(f"Failed to load instance from {args.instance}: {e}")
+                    return 1
             else:
-                # Generate a default problem for quick experiments
-                logger.info("No instance provided - generating a small demo instance.")
-                problem = DataGenerator.generate_instance(
+                problem = _MODULES["DataGenerator"].generate_instance(
                     name="cli_demo",
-                    n_customers=15,
-                    n_ifs=2,
-                    vehicle_capacity=25,
+                    n_customers=cfg.get("problem", {}).get("n_customers", 15)
+                    if cfg
+                    else 15,
+                    n_ifs=cfg.get("problem", {}).get("n_ifs", 2) if cfg else 2,
+                    vehicle_capacity=cfg.get("problem", {}).get("vehicle_capacity", 25)
+                    if cfg
+                    else 25,
                     seed=seed,
                 )
-            sol = run_solver_on_instance(
+
+            solution = run_solver_on_instance(
                 problem,
                 cfg=cfg,
                 iterations=getattr(args, "iterations", None),
-                save_results=args.save_results,
-                results_dir=args.results_dir,
+                save_results=getattr(args, "save_results", False),
+                results_dir=getattr(args, "results_dir", "outputs"),
             )
-            # Print quick summary
             try:
-                print(f"Solution cost: {sol.total_cost:.2f}")
-                print(f"Routes: {len(sol.routes)}")
+                print(f"Solution cost: {solution.total_cost:.2f}")
+                print(f"Routes: {len(solution.routes)}")
             except Exception:
                 print(
-                    "Solver completed - check saved outputs or enable --verbose for details."
+                    "Solver completed — enable --verbose for more details or inspect saved outputs."
                 )
 
         elif args.command == "construct":
-            # Load or generate instance
             if args.instance:
-                problem = DataGenerator.load_instance_from_file(args.instance)
+                try:
+                    problem = _MODULES["DataGenerator"].load_instance_from_file(
+                        args.instance
+                    )  # type: ignore
+                except Exception as e:
+                    logger.error(f"Failed to load instance from {args.instance}: {e}")
+                    return 1
             else:
-                problem = DataGenerator.generate_instance(
+                problem = _MODULES["DataGenerator"].generate_instance(
                     name="cli_construct_demo",
                     n_customers=20,
                     n_ifs=3,
                     vehicle_capacity=25,
                     seed=seed,
                 )
+
             result = run_construction(
                 problem,
                 strategy_name=getattr(args, "strategy", None),
@@ -511,9 +669,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 save_results=getattr(args, "save_results", False),
                 results_dir=getattr(args, "results_dir", "outputs"),
             )
-            print(f"Constructed solution cost: {result.solution.total_cost:.2f}")
-            print(f"Construction time: {result.construction_time:.3f}s")
-            print(f"Strategy used: {result.strategy.value}")
+            print(
+                f"Constructed solution cost: {getattr(result.solution, 'total_cost', float('nan')):.2f}"
+            )
+            print(f"Strategy: {getattr(result, 'strategy', 'unknown')}")
 
         elif args.command == "benchmark":
             out = getattr(args, "out", None)
@@ -526,7 +685,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.command == "validate":
             res = validate_solution_file(
-                solution_file=args.solution_file,
+                solution_file=getattr(args, "solution_file"),
                 report_file=getattr(args, "report_file", None),
                 benchmark=getattr(args, "benchmark", False),
             )
@@ -536,7 +695,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             parser.print_help()
 
     except Exception as e:
-        logger.exception(f"An error occurred while executing the command: {e}")
+        logger.exception(f"An unexpected error occurred: {e}")
         return 1
 
     return 0
