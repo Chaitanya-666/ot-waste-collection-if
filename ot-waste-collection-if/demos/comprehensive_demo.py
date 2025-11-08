@@ -76,6 +76,11 @@ def parse_args():
         "--save-plots", action="store_true", help="Save route and convergence plots"
     )
     p.add_argument(
+        "--live",
+        action="store_true",
+        help="Enable live plotting during optimization (interactive matplotlib)",
+    )
+    p.add_argument(
         "--output-dir",
         type=str,
         default=os.path.join(SCRIPT_DIR, "outputs"),
@@ -141,12 +146,66 @@ def main():
     solver = ALNS(problem)
     solver.max_iterations = args.iterations
 
+    # Optionally enable live plotting: wire ALNS iteration_callback to visualizer updates.
+    visualizer = None
+    if getattr(args, "live", False):
+        try:
+            # Create visualizer in live mode
+            visualizer = RouteVisualizer(problem, live=True)
+            visualizer.start_live(title=f"Live - {problem.name}")
+
+            # Define a safe iteration callback that updates live plot with best solution so far
+            def _iteration_callback(iteration_idx, best_solution):
+                try:
+                    # best_solution is the ALNS best_solution object; pass convergence history too
+                    visualizer.update_live(
+                        best_solution, getattr(solver, "convergence_history", [])
+                    )
+                except Exception:
+                    # be defensive: swallow visualization errors so solver keeps running
+                    pass
+
+            solver.iteration_callback = _iteration_callback
+            print("Live plotting enabled: updating plot at each adaptive iteration.")
+        except Exception as _e:
+            # If live plotting setup fails, continue without it
+            visualizer = None
+
     # 3) Run solver
     print("\nStarting ALNS optimization...")
     t0 = time.time()
     solution = solver.run(max_iterations=solver.max_iterations)
     elapsed = time.time() - t0
     print(f"ALNS finished in {elapsed:.2f}s")
+
+    # If live plotting was enabled, do a final update and stop interactive mode.
+    if visualizer is not None:
+        try:
+            visualizer.update_live(solution, getattr(solver, "convergence_history", []))
+            visualizer.stop_live()
+            # Optionally save final plots if requested
+            if args.save_plots:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                route_png = os.path.join(args.output_dir, f"routes_live_{ts}.png")
+                conv_png = os.path.join(args.output_dir, f"convergence_live_{ts}.png")
+                try:
+                    fig = visualizer.plot_solution(
+                        solution, title=f"Routes - {problem.name}"
+                    )
+                    fig.savefig(route_png, dpi=200, bbox_inches="tight")
+                    print(f"Saved live route plot to: {route_png}")
+                except Exception:
+                    pass
+                try:
+                    visualizer.plot_convergence(
+                        getattr(solver, "convergence_history", [])
+                    )
+                    visualizer.fig.savefig(conv_png, dpi=200, bbox_inches="tight")
+                    print(f"Saved live convergence plot to: {conv_png}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # 4) Print brief summary
     total_cost = getattr(

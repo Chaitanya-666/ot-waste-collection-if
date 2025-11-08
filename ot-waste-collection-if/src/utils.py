@@ -2,7 +2,7 @@
 Utility functions for the project
 
 This module provides comprehensive utilities for:
-- Route visualization and plotting
+- Route visualization and plotting (including optional live plotting updates)
 - Performance metrics calculation
 - Data generation for testing
 - Solution analysis and reporting
@@ -14,17 +14,32 @@ import numpy as np
 import json
 import random
 import math
-from typing import List, Dict, Tuple, Optional
+import time
+from typing import List, Dict, Tuple, Optional, Callable
 from .solution import Solution, Route
 from .problem import ProblemInstance, Location
 
 
 class RouteVisualizer:
-    """Visualize routes and solutions using matplotlib"""
+    """Visualize routes and solutions using matplotlib.
 
-    def __init__(self, problem: ProblemInstance):
+    This visualizer supports:
+      - static plotting via `plot_solution` and `plot_convergence`
+      - live updates via `start_live` / `update_live` / `stop_live`
+        where the ALNS solver can provide iteration callbacks to update plots.
+    """
+
+    def __init__(
+        self,
+        problem: ProblemInstance,
+        figsize: Tuple[int, int] = (12, 10),
+        live: bool = False,
+    ):
         self.problem = problem
-        self.fig, self.ax = plt.subplots(figsize=(12, 10))
+        self.fig = plt.figure(figsize=figsize)
+        # Use a grid: left axes for routes, right (bottom) axes for convergence
+        self.ax = self.fig.add_subplot(2, 1, 1)
+        self.conv_ax = self.fig.add_subplot(2, 1, 2)
         self.colors = [
             "blue",
             "red",
@@ -37,25 +52,32 @@ class RouteVisualizer:
             "olive",
             "cyan",
         ]
+        self._live = bool(live)
+        if self._live:
+            # enable interactive mode
+            try:
+                plt.ion()
+            except Exception:
+                pass
 
-    def plot_solution(self, solution: Solution, title: str = "Waste Collection Routes"):
-        """Plot the complete solution with all routes"""
+    def _draw_base_map(self, title: str = "Waste Collection Routes"):
+        """Draw depot, IFs and customers (static background) onto self.ax"""
         self.ax.clear()
-        self.ax.set_title(title, fontsize=16, fontweight="bold")
+        self.ax.set_title(title, fontsize=14, fontweight="bold")
         self.ax.set_xlabel("X Coordinate")
         self.ax.set_ylabel("Y Coordinate")
 
-        # Plot depot
         depot = self.problem.depot
-        self.ax.plot(depot.x, depot.y, "ks", markersize=15, label="Depot", zorder=5)
-        self.ax.annotate(
-            "Depot",
-            (depot.x, depot.y),
-            xytext=(5, 5),
-            textcoords="offset points",
-            fontsize=10,
-            fontweight="bold",
-        )
+        if depot is not None:
+            self.ax.plot(depot.x, depot.y, "ks", markersize=12, label="Depot", zorder=5)
+            self.ax.annotate(
+                "Depot",
+                (depot.x, depot.y),
+                xytext=(5, 5),
+                textcoords="offset points",
+                fontsize=9,
+                fontweight="bold",
+            )
 
         # Plot intermediate facilities
         for i, if_node in enumerate(self.problem.intermediate_facilities):
@@ -64,7 +86,7 @@ class RouteVisualizer:
                 if_node.y,
                 "D",
                 color="orange",
-                markersize=12,
+                markersize=10,
                 label="IF" if i == 0 else "",
                 zorder=4,
             )
@@ -73,24 +95,33 @@ class RouteVisualizer:
                 (if_node.x, if_node.y),
                 xytext=(5, 5),
                 textcoords="offset points",
-                fontsize=9,
+                fontsize=8,
                 fontweight="bold",
             )
 
-        # Plot customers
+        # Plot customers (background)
         for customer in self.problem.customers:
             self.ax.plot(
-                customer.x, customer.y, "o", color="lightblue", markersize=8, zorder=3
+                customer.x, customer.y, "o", color="lightblue", markersize=6, zorder=3
             )
             self.ax.annotate(
                 f"C{customer.id}",
                 (customer.x, customer.y),
                 xytext=(3, 3),
                 textcoords="offset points",
-                fontsize=8,
+                fontsize=7,
             )
 
-        # Plot routes
+        self.ax.legend(loc="upper right", bbox_to_anchor=(1.15, 1))
+        self.ax.set_aspect("equal")
+        self.ax.grid(True, alpha=0.3)
+
+    def plot_solution(self, solution: Solution, title: str = "Waste Collection Routes"):
+        """Plot the complete solution with all routes (static)."""
+        # Draw base map
+        self._draw_base_map(title)
+
+        # Plot routes on top
         for i, route in enumerate(solution.routes):
             if not route.nodes:
                 continue
@@ -99,64 +130,141 @@ class RouteVisualizer:
             route_x = [node.x for node in route.nodes]
             route_y = [node.y for node in route.nodes]
 
-            # Plot route line
             self.ax.plot(
                 route_x,
                 route_y,
                 "-",
                 color=color,
                 linewidth=2,
-                alpha=0.7,
+                alpha=0.8,
                 label=f"Vehicle {i + 1}",
             )
 
-            # Plot route points
+            # Plot route points and annotate IFs/customers
             for j, node in enumerate(route.nodes):
                 if node.type == "depot":
                     continue
                 elif node.type == "if":
                     self.ax.plot(
-                        node.x, node.y, "D", color=color, markersize=10, zorder=4
+                        node.x, node.y, "D", color=color, markersize=8, zorder=4
                     )
                 else:  # customer
                     self.ax.plot(
-                        node.x, node.y, "o", color=color, markersize=8, zorder=3
+                        node.x, node.y, "o", color=color, markersize=5, zorder=3
                     )
 
-            # Add route info
+            # Add route info (distance) near route midpoint
             mid_idx = len(route.nodes) // 2
             if mid_idx < len(route.nodes):
                 mid_node = route.nodes[mid_idx]
+                try:
+                    txt = f"V{i + 1}\n{route.total_distance:.1f}"
+                except Exception:
+                    txt = f"V{i + 1}"
                 self.ax.annotate(
-                    f"V{i + 1}\n{route.total_distance:.1f}",
+                    txt,
                     (mid_node.x, mid_node.y),
-                    xytext=(10, 10),
+                    xytext=(8, 8),
                     textcoords="offset points",
-                    fontsize=8,
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.7),
+                    fontsize=7,
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor=color, alpha=0.6),
                 )
 
-        # Add legend
-        self.ax.legend(loc="upper right", bbox_to_anchor=(1.15, 1))
-
-        # Set equal aspect ratio and grid
-        self.ax.set_aspect("equal")
-        self.ax.grid(True, alpha=0.3)
         plt.tight_layout()
         return self.fig
 
     def plot_convergence(
         self, convergence_history: List[float], title: str = "ALNS Convergence"
     ):
-        """Plot convergence history"""
-        plt.figure(figsize=(10, 6))
-        plt.plot(convergence_history, "b-", linewidth=2)
-        plt.title(title, fontsize=14, fontweight="bold")
-        plt.xlabel("Iteration")
-        plt.ylabel("Solution Cost")
-        plt.grid(True, alpha=0.3)
+        """Plot convergence history on the convergence axis (static)."""
+        self.conv_ax.clear()
+        self.conv_ax.plot(convergence_history, "b-", linewidth=1.5)
+        self.conv_ax.set_title(title, fontsize=12, fontweight="bold")
+        self.conv_ax.set_xlabel("Iteration")
+        self.conv_ax.set_ylabel("Solution Cost")
+        self.conv_ax.grid(True, alpha=0.3)
         plt.tight_layout()
-        return plt.gcf()
+        return self.fig
+
+    # Live plotting API
+    def start_live(self, title: str = "Live Waste Collection Routes"):
+        """Prepare the figure for live updates. Call once before iterative updates."""
+        self._draw_base_map(title)
+        self.conv_ax.clear()
+        if self._live:
+            try:
+                self.fig.canvas.draw()
+                self.fig.canvas.flush_events()
+            except Exception:
+                pass
+        return self.fig
+
+    def update_live(
+        self,
+        solution: Solution,
+        convergence_history: Optional[List[float]] = None,
+        pause: float = 0.01,
+    ):
+        """Update the live plot with the current solution and convergence history.
+
+        This method is intentionally lightweight and defensive: failures here won't
+        interrupt the solver. It clears previous dynamic route plots and redraws.
+        """
+        try:
+            # redraw base map but keep it lightweight
+            self._draw_base_map("Live - Waste Collection Routes")
+
+            # Draw routes (same as plot_solution but onto existing axes)
+            for i, route in enumerate(solution.routes):
+                if not route.nodes:
+                    continue
+                color = self.colors[i % len(self.colors)]
+                route_x = [node.x for node in route.nodes]
+                route_y = [node.y for node in route.nodes]
+                self.ax.plot(
+                    route_x, route_y, "-", color=color, linewidth=1.5, alpha=0.9
+                )
+                # plot IFs/customers for the route overlay
+                for node in route.nodes:
+                    if node.type == "if":
+                        self.ax.plot(node.x, node.y, "D", color=color, markersize=6)
+                    elif node.type == "customer":
+                        self.ax.plot(node.x, node.y, "o", color=color, markersize=4)
+
+            # Update convergence
+            if convergence_history is not None:
+                self.conv_ax.clear()
+                self.conv_ax.plot(convergence_history, "b-", linewidth=1.0)
+                self.conv_ax.set_title(
+                    "ALNS Convergence", fontsize=12, fontweight="bold"
+                )
+                self.conv_ax.set_xlabel("Iteration")
+                self.conv_ax.set_ylabel("Solution Cost")
+                self.conv_ax.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            if self._live:
+                try:
+                    self.fig.canvas.draw()
+                    self.fig.canvas.flush_events()
+                except Exception:
+                    pass
+        except Exception:
+            # fail-safe: do not allow visualization errors to stop solver
+            pass
+
+    def stop_live(self):
+        """Stop live plotting and switch back to blocking mode."""
+        if self._live:
+            try:
+                plt.ioff()
+            except Exception:
+                pass
+        try:
+            self.fig.canvas.draw()
+        except Exception:
+            pass
+        return self.fig
 
 
 class PerformanceAnalyzer:
@@ -279,6 +387,7 @@ class DataGenerator:
         vehicle_capacity: int = 20,
         area_size: int = 100,
         demand_range: Tuple[int, int] = (1, 10),
+        service_time_range: Tuple[int, int] = (1, 5),
         seed: Optional[int] = None,
     ) -> ProblemInstance:
         """Generate a synthetic problem instance"""
@@ -308,6 +417,7 @@ class DataGenerator:
             y = random.randint(5, area_size - 5)
             demand = random.randint(*demand_range)
             customer = Location(i + 1, x, y, demand, "customer")
+            customer.service_time = random.randint(*service_time_range)
             problem.customers.append(customer)
 
         return problem
@@ -329,6 +439,9 @@ class DataGenerator:
                     vehicle_capacity=instance_config.get("capacity", 20),
                     area_size=instance_config.get("area_size", 100),
                     demand_range=tuple(instance_config.get("demand_range", [1, 10])),
+                    service_time_range=tuple(
+                        instance_config.get("service_time_range", [1, 5])
+                    ),
                     seed=instance_config.get("seed"),
                 )
                 instances.append(instance)
@@ -354,6 +467,9 @@ class DataGenerator:
                     "capacity": 20,
                     "area_size": 100,
                     "demand_range": [1, 10],
+                    "service_time_range": [1, 5],
+                    "cluster_factor": 0.3,
+                    "depot_position": "center",
                     "seed": 42,
                 },
                 {
@@ -363,6 +479,9 @@ class DataGenerator:
                     "capacity": 30,
                     "area_size": 150,
                     "demand_range": [1, 15],
+                    "service_time_range": [1, 8],
+                    "cluster_factor": 0.5,
+                    "depot_position": "center",
                     "seed": 123,
                 },
                 {
@@ -372,6 +491,9 @@ class DataGenerator:
                     "capacity": 40,
                     "area_size": 200,
                     "demand_range": [1, 20],
+                    "service_time_range": [1, 10],
+                    "cluster_factor": 0.7,
+                    "depot_position": "center",
                     "seed": 456,
                 },
             ]

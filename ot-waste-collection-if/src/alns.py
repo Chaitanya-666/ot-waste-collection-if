@@ -20,6 +20,10 @@ class ALNS:
         self.iteration = 0
         self.start_time = None
         self.convergence_history = []
+        # Optional callback used to support live plotting / iteration updates.
+        # If set, this should be a callable accepting (iteration:int, best_solution: Solution)
+        # The demo / UI can assign a function to receive intermediate results.
+        self.iteration_callback = None
 
         # ALNS parameters
         self.max_iterations = 1000
@@ -87,20 +91,22 @@ class ALNS:
             # Repair phase
             new_solution = self._repair(partial_solution, repair_op)
 
-            # Acceptance criterion: accept only feasible solutions (reject infeasible)
-            # We require the candidate solution to be feasible before considering acceptance.
-            if (
-                new_solution is not None
-                and new_solution.is_feasible()[0]
-                and self._accept_solution(new_solution)
-            ):
+            # Recompute candidate solution cost (includes penalty for unassigned customers)
+            if new_solution is not None:
+                try:
+                    new_solution.total_cost = self._calculate_total_cost(new_solution)
+                except Exception:
+                    # if recalculation fails, continue without breaking the iteration
+                    pass
+
+            # Acceptance: operate on the penalized objective (distance + heavy penalty for unassigned customers).
+            # Allow the SA acceptance criterion to accept improving penalized-cost solutions even if
+            # they are not strictly fully-feasible so the search can move toward complete assignments.
+            if new_solution is not None and self._accept_solution(new_solution):
                 self.current_solution = new_solution
 
-                # Update best solution only if the new solution is feasible and strictly better
-                if (
-                    new_solution.is_feasible()[0]
-                    and new_solution.total_cost < self.best_solution.total_cost
-                ):
+                # Update best solution based on penalized cost (prefer lower penalized cost)
+                if new_solution.total_cost < self.best_solution.total_cost:
                     self.best_solution = new_solution.copy()
                     print(
                         f"New best solution found at iteration {iteration}: {new_solution.total_cost:.2f}"
@@ -118,6 +124,16 @@ class ALNS:
 
             # Track convergence
             self.convergence_history.append(self.best_solution.total_cost)
+
+            # If a live-plot / iteration callback is registered, call it with the current iteration.
+            # The callback can be used to update a plot or UI in real-time.
+            if callable(getattr(self, "iteration_callback", None)):
+                try:
+                    # provide a safe copy or the best solution object depending on caller needs
+                    self.iteration_callback(iteration, self.best_solution)
+                except Exception:
+                    # fail-safe: do not interrupt ALNS if callback raises
+                    pass
 
             # Progress reporting
             if iteration % 100 == 0:
@@ -148,9 +164,24 @@ class ALNS:
         # Remaining customers (Location objects)
         remaining = [c for c in self.problem.customers]
 
-        # Start with an empty route
-        current_route = self._create_empty_route()
-        solution.routes.append(current_route)
+        # Ensure we create at least the minimum number of empty routes required
+        # by the problem instance so the greedy constructor can utilise the fleet.
+        min_needed = 1
+        try:
+            min_needed = max(1, int(self.problem.get_min_vehicles_needed()))
+        except Exception:
+            # fallback: leave min_needed as 1 if method unavailable
+            min_needed = 1
+
+        # Create that many empty routes up-front (each starts at depot)
+        for _ in range(min_needed):
+            r = self._create_empty_route()
+            solution.routes.append(r)
+
+        # Use the first route as the current insertion target initially
+        current_route = (
+            solution.routes[0] if solution.routes else self._create_empty_route()
+        )
         current_location = self.problem.depot
 
         # Greedy nearest insertion while respecting capacity: if current route cannot accept
@@ -230,7 +261,9 @@ class ALNS:
         solution.total_time = sum(
             getattr(r, "total_time", 0.0) for r in solution.routes
         )
-        solution.total_cost = solution.total_distance
+        # Use ALNS's cost calculator which includes a penalty for unassigned customers
+        # so the search prefers complete assignments over partial low-distance solutions.
+        solution.total_cost = self._calculate_total_cost(solution)
 
         return solution
 
@@ -248,7 +281,12 @@ class ALNS:
         return sum(node.demand for node in route.nodes if node.type == "customer")
 
     def _calculate_total_cost(self, solution: Solution) -> float:
-        """Calculate total cost of a solution"""
+        """Calculate total cost of a solution.
+
+        In addition to the travel distance (sum of edge distances) this method
+        includes a heavy penalty for any unassigned customers so the ALNS search
+        prefers complete assignments where feasible.
+        """
         total_cost = 0.0
 
         for route in solution.routes:
@@ -257,6 +295,31 @@ class ALNS:
                 to_node = route.nodes[i + 1]
                 distance = self.problem.calculate_distance(from_node, to_node)
                 total_cost += distance
+
+        # Penalize unassigned customers heavily so that complete-service solutions
+        # are preferred over lower-distance partial solutions.
+        penalty_per_unassigned = 1000.0
+        try:
+            n_unassigned = 0
+            if (
+                hasattr(solution, "unassigned_customers")
+                and solution.unassigned_customers is not None
+            ):
+                # unassigned_customers stored as a set of IDs in this project
+                n_unassigned = len(solution.unassigned_customers)
+            else:
+                # Fallback: compute by comparing customer ids in routes
+                assigned = set()
+                for r in solution.routes:
+                    for n in r.nodes:
+                        if getattr(n, "type", None) == "customer":
+                            assigned.add(n.id)
+                all_ids = set(c.id for c in self.problem.customers)
+                n_unassigned = len(all_ids - assigned)
+            total_cost += penalty_per_unassigned * float(n_unassigned)
+        except Exception:
+            # If anything goes wrong, avoid failing the cost calculation; do not add penalty.
+            pass
 
         return total_cost
 
@@ -696,15 +759,28 @@ class ALNS:
         return partial_solution
 
     def _get_unassigned_customers(self, solution: Solution) -> List["Location"]:
-        """Get list of unassigned customers"""
-        assigned_customers = set()
+        """Get list of unassigned customers.
+
+        Prefer using the solution's `unassigned_customers` set of IDs when available
+        (identity-safe). Fall back to deriving unassigned customers from routes by id.
+        """
+        # If the solution explicitly tracks unassigned customer IDs, use that.
+        try:
+            unassigned_ids = set(getattr(solution, "unassigned_customers", set()))
+            if unassigned_ids:
+                return [c for c in self.problem.customers if c.id in unassigned_ids]
+        except Exception:
+            # Defensive: fall back to deriving from routes below.
+            pass
+
+        # Fallback: derive unassigned by checking which customer IDs do not appear in routes.
+        assigned_ids = set()
         for route in solution.routes:
             for node in route.nodes:
-                if node.type == "customer":
-                    assigned_customers.add(node)
+                if getattr(node, "type", None) == "customer":
+                    assigned_ids.add(getattr(node, "id", None))
 
-        unassigned = [c for c in self.problem.customers if c not in assigned_customers]
-        return unassigned
+        return [c for c in self.problem.customers if c.id not in assigned_ids]
 
     def _greedy_insertion_for_customer(
         self, solution: Solution, customer: "Location"
