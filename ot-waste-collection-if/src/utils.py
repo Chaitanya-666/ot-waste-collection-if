@@ -403,135 +403,6 @@ SOLUTION QUALITY: {"EXCELLENT" if analysis["num_unassigned"] == 0 else "NEEDS IM
         return report
 
 
-class DataGenerator:
-    """Generate synthetic problem instances for testing"""
-
-    @staticmethod
-    def generate_instance(
-        name: str,
-        n_customers: int,
-        n_ifs: int,
-        vehicle_capacity: int = 20,
-        area_size: int = 100,
-        demand_range: Tuple[int, int] = (1, 10),
-        service_time_range: Tuple[int, int] = (1, 5),
-        seed: Optional[int] = None,
-    ) -> ProblemInstance:
-        """Generate a synthetic problem instance"""
-        if seed is not None:
-            random.seed(seed)
-            np.random.seed(seed)
-
-        problem = ProblemInstance(name)
-        problem.vehicle_capacity = vehicle_capacity
-        problem.number_of_vehicles = max(2, n_customers // 5)  # Rule of thumb
-        problem.disposal_time = 2
-
-        # Add depot at center
-        depot = Location(0, area_size // 2, area_size // 2, 0, "depot")
-        problem.depot = depot
-
-        # Add intermediate facilities
-        for i in range(n_ifs):
-            x = random.randint(10, area_size - 10)
-            y = random.randint(10, area_size - 10)
-            if_node = Location(i + 1000, x, y, 0, "if")
-            problem.intermediate_facilities.append(if_node)
-
-        # Add customers
-        for i in range(n_customers):
-            x = random.randint(5, area_size - 5)
-            y = random.randint(5, area_size - 5)
-            demand = random.randint(*demand_range)
-            customer = Location(i + 1, x, y, demand, "customer")
-            customer.service_time = random.randint(*service_time_range)
-            problem.customers.append(customer)
-
-        return problem
-
-    @staticmethod
-    def generate_instances_from_file(filename: str) -> List[ProblemInstance]:
-        """Generate instances from a configuration file"""
-        instances = []
-
-        try:
-            with open(filename, "r") as f:
-                config = json.load(f)
-
-            for instance_config in config.get("instances", []):
-                instance = DataGenerator.generate_instance(
-                    name=instance_config["name"],
-                    n_customers=instance_config["customers"],
-                    n_ifs=instance_config["ifs"],
-                    vehicle_capacity=instance_config.get("capacity", 20),
-                    area_size=instance_config.get("area_size", 100),
-                    demand_range=tuple(instance_config.get("demand_range", [1, 10])),
-                    service_time_range=tuple(
-                        instance_config.get("service_time_range", [1, 5])
-                    ),
-                    seed=instance_config.get("seed"),
-                )
-                instances.append(instance)
-
-        except FileNotFoundError:
-            print(
-                f"Warning: Configuration file {filename} not found. Using default instance."
-            )
-            # Generate a default instance
-            instances.append(DataGenerator.generate_instance("Default", 10, 1))
-
-        return instances
-
-    @staticmethod
-    def create_config_template(filename: str = "instances_config.json"):
-        """Create a template configuration file"""
-        template = {
-            "instances": [
-                {
-                    "name": "Small Instance",
-                    "customers": 6,
-                    "ifs": 1,
-                    "capacity": 20,
-                    "area_size": 100,
-                    "demand_range": [1, 10],
-                    "service_time_range": [1, 5],
-                    "cluster_factor": 0.3,
-                    "depot_position": "center",
-                    "seed": 42,
-                },
-                {
-                    "name": "Medium Instance",
-                    "customers": 20,
-                    "ifs": 2,
-                    "capacity": 30,
-                    "area_size": 150,
-                    "demand_range": [1, 15],
-                    "service_time_range": [1, 8],
-                    "cluster_factor": 0.5,
-                    "depot_position": "center",
-                    "seed": 123,
-                },
-                {
-                    "name": "Large Instance",
-                    "customers": 50,
-                    "ifs": 3,
-                    "capacity": 40,
-                    "area_size": 200,
-                    "demand_range": [1, 20],
-                    "service_time_range": [1, 10],
-                    "cluster_factor": 0.7,
-                    "depot_position": "center",
-                    "seed": 456,
-                },
-            ]
-        }
-
-        with open(filename, "w") as f:
-            json.dump(template, f, indent=2)
-
-        print(f"Configuration template created: {filename}")
-
-
 def save_solution_to_file(solution: Solution, filename: str):
     """Save solution to JSON file for later analysis"""
     import json
@@ -576,7 +447,7 @@ def benchmark_algorithm(
     problem: ProblemInstance, max_iterations_list: List[int] = [100, 200, 500, 1000]
 ) -> Dict:
     """Benchmark algorithm performance with different iteration counts"""
-    from .alns import ALNS
+    from alns import ALNS
 
     results = {}
 

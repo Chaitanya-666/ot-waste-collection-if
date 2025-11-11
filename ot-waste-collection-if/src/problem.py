@@ -145,3 +145,22 @@ class ProblemInstance:
         ):
             return False, "Customer demand exceeds vehicle capacity"
         return True, "Problem instance is feasible"
+
+    def is_route_feasible(self, route) -> Tuple[bool, str]:
+        """Check if a single route is feasible"""
+        if not route.nodes:
+            return False, "Empty route"
+
+        if route.nodes[0] != self.depot or route.nodes[-1] != self.depot:
+            return False, "Route must start and end at depot"
+
+        current_load = 0
+        for i, node in enumerate(route.nodes):
+            if node.type == "customer":
+                current_load += node.demand
+                if current_load > self.vehicle_capacity:
+                    return False, f"Capacity exceeded at customer {node.id}"
+            elif node.type == "if":
+                current_load = 0
+
+        return True, "Route is feasible"

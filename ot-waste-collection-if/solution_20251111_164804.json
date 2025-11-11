@@ -1,0 +1,98 @@
+{
+  "timestamp": "2025-11-11T16:48:04.158367",
+  "total_cost": 43.31147691551193,
+  "total_distance": 43.31147691551193,
+  "total_time": 43.31147691551193,
+  "num_vehicles": 2,
+  "unassigned_customers": [],
+  "routes": [
+    {
+      "vehicle_id": 1,
+      "nodes": [
+        {
+          "id": 0,
+          "type": "depot",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": 1,
+          "type": "customer",
+          "x": 5,
+          "y": 2
+        },
+        {
+          "id": 3,
+          "type": "customer",
+          "x": 9,
+          "y": 1
+        },
+        {
+          "id": 6,
+          "type": "customer",
+          "x": 8,
+          "y": 6
+        },
+        {
+          "id": 4,
+          "type": "customer",
+          "x": 6,
+          "y": 7
+        },
+        {
+          "id": 0,
+          "type": "depot",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "total_distance": 26.062902381137626,
+      "total_time": 26.062902381137626,
+      "loads": [
+        0,
+        4.0,
+        9.0,
+        13.0,
+        20.0,
+        20.0
+      ]
+    },
+    {
+      "vehicle_id": 2,
+      "nodes": [
+        {
+          "id": 0,
+          "type": "depot",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": 2,
+          "type": "customer",
+          "x": 3,
+          "y": 8
+        },
+        {
+          "id": 5,
+          "type": "customer",
+          "x": 2,
+          "y": 3
+        },
+        {
+          "id": 0,
+          "type": "depot",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "total_distance": 17.248574534374303,
+      "total_time": 17.248574534374303,
+      "loads": [
+        0,
+        6.0,
+        9.0,
+        9.0
+      ]
+    }
+  ]
+}
