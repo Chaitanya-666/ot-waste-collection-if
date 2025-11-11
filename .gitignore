@@ -15,6 +15,7 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+potentialupdates/
 
 # OS
 .DS_Store
