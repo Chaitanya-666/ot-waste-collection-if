@@ -33,6 +33,42 @@ class SimpleVideoCreator:
             ax.clear()
             current_state = optimization_history[frame_num]
             
+            # Calculate dynamic scale based on all points
+            all_x = [depot_location[0]]
+            all_y = [depot_location[1]]
+            
+            # Add customer locations
+            for loc, demand in customer_data.items():
+                all_x.append(loc[0])
+                all_y.append(loc[1])
+            
+            # Add intermediate facilities
+            for if_loc in intermediate_facilities:
+                all_x.append(if_loc[0])
+                all_y.append(if_loc[1])
+            
+            # Add route points if available
+            if 'routes' in current_state:
+                for route in current_state['routes']:
+                    for point in route:
+                        all_x.append(point[0])
+                        all_y.append(point[1])
+            
+            # Calculate dynamic bounds with padding
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            
+            # Add padding (10% of range, minimum 2 units)
+            x_range = max_x - min_x
+            y_range = max_y - min_y
+            padding_x = max(2.0, x_range * 0.1)
+            padding_y = max(2.0, y_range * 0.1)
+            
+            plot_min_x = min_x - padding_x
+            plot_max_x = max_x + padding_x
+            plot_min_y = min_y - padding_y
+            plot_max_y = max_y + padding_y
+            
             # Plot depot
             ax.scatter(depot_location[0], depot_location[1], 
                       c='red', s=200, marker='s', label='Depot', 
@@ -78,9 +114,9 @@ class SimpleVideoCreator:
                    fontsize=10, verticalalignment='top',
                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
-            # Set limits and formatting
-            ax.set_xlim(-2, 22)
-            ax.set_ylim(-2, 22)
+            # Set limits and formatting using dynamic bounds
+            ax.set_xlim(plot_min_x, plot_max_x)
+            ax.set_ylim(plot_min_y, plot_max_y)
             ax.set_aspect('equal')
             ax.grid(True, alpha=0.3)
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -153,10 +189,15 @@ class SimpleVideoCreator:
             ax.grid(True, alpha=0.3)
             ax.legend()
             
-            # Set y-axis limits with padding
+            # Set y-axis limits with dynamic padding
             if cost_subset:
                 cost_min, cost_max = min(cost_subset), max(cost_subset)
-                padding = (cost_max - cost_min) * 0.1 if cost_max > cost_min else 1
+                if cost_max > cost_min:
+                    # Use 10% padding, minimum 5% of range
+                    padding = max((cost_max - cost_min) * 0.1, (cost_max - cost_min) * 0.05)
+                else:
+                    # If all costs are the same, use a small range
+                    padding = cost_max * 0.1 if cost_max > 0 else 1
                 ax.set_ylim(cost_min - padding, cost_max + padding)
         
         fig, ax = plt.subplots(figsize=(10, 6))

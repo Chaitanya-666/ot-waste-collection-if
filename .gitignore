@@ -5,3 +5,5 @@ README_ARCH_LINUX.md
 setup_arch.sh
 VERIFICATION_REPORT.md
 VERIFICATION_SUMMARY.md
+optimization_videos/frames/
+__pycache__/
