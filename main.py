@@ -191,6 +191,10 @@ def run_comprehensive_demonstration(
     solver = ALNS(problem)
     solver.max_iterations = int(iterations)
 
+    # Progress tracking for optimization
+    ProgressTracker = create_progress_tracker()
+    progress = ProgressTracker(solver.max_iterations)
+    
     # Optionally enable live plotting: set up visualizer and register iteration callback
     visualizer = None
     if live:
@@ -199,6 +203,7 @@ def run_comprehensive_demonstration(
             visualizer.start_live(title=f"Live - {problem.name}")
 
             def _iteration_callback(iteration_idx, best_solution):
+                progress.update(iteration_idx)
                 try:
                     visualizer.update_live(
                         best_solution, getattr(solver, "convergence_history", [])
@@ -209,12 +214,20 @@ def run_comprehensive_demonstration(
 
             # Assign callback (acceptable at runtime; some static checkers may warn)
             solver.iteration_callback = _iteration_callback
-            print("Live plotting enabled for comprehensive demonstration.")
+            print("🎬 Live plotting enabled for comprehensive demonstration.")
         except Exception:
             visualizer = None
+    else:
+        # Add progress callback without visualization
+        def _progress_callback(iteration_idx, best_solution):
+            progress.update(iteration_idx)
+        
+        solver.iteration_callback = _progress_callback
 
     # Run optimization
-    print(f"\nStarting ALNS optimization with {solver.max_iterations} iterations...")
+    print(f"\n🚀 Starting ALNS optimization with {solver.max_iterations} iterations...")
+    if not live:
+        print("📊 Progress tracking enabled - watch the optimization progress!")
     start_time = time.time()
 
     solution = solver.run(max_iterations=solver.max_iterations)
@@ -350,36 +363,189 @@ def run_benchmark_demonstration():
     return results
 
 
+def display_ascii_route_map(solution, problem):
+    """Display ASCII art route visualization in terminal"""
+    print("\n" + "=" * 80)
+    print("🗺️  ASCII ROUTE VISUALIZATION")
+    print("=" * 80)
+    
+    # Normalize coordinates for ASCII display
+    all_x = [problem.depot.x]
+    all_y = [problem.depot.y]
+    
+    for customer in problem.customers:
+        all_x.append(customer.x)
+        all_y.append(customer.y)
+    
+    for ifac in problem.intermediate_facilities:
+        all_x.append(ifac.x)
+        all_y.append(ifac.y)
+    
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+    
+    width, height = 60, 20
+    
+    # Create empty grid
+    grid = [[' ' for _ in range(width)] for _ in range(height)]
+    
+    # Function to convert coordinates to grid position
+    def coord_to_grid(x, y):
+        grid_x = int((x - min_x) / (max_x - min_x) * (width - 1))
+        grid_y = int((y - min_y) / (max_y - min_y) * (height - 1))
+        return grid_x, height - 1 - grid_y  # Flip Y axis
+    
+    # Place depot (red)
+    depot_x, depot_y = coord_to_grid(problem.depot.x, problem.depot.y)
+    grid[depot_y][depot_x] = '🏢'
+    
+    # Place intermediate facilities (green)
+    for ifac in problem.intermediate_facilities:
+        if_x, if_y = coord_to_grid(ifac.x, ifac.y)
+        grid[if_y][if_x] = '🏭'
+    
+    # Place customers (blue)
+    for customer in problem.customers:
+        c_x, c_y = coord_to_grid(customer.x, customer.y)
+        grid[c_y][c_x] = '📍'
+    
+    # Draw routes with different symbols
+    route_symbols = ['➤', '→', '↗', '↘', '◆', '◇']
+    
+    for i, route in enumerate(solution.routes):
+        symbol = route_symbols[i % len(route_symbols)]
+        
+        for j in range(len(route.nodes) - 1):
+            current = route.nodes[j]
+            next_node = route.nodes[j + 1]
+            
+            curr_x, curr_y = coord_to_grid(current.x, current.y)
+            next_x, next_y = coord_to_grid(next_node.x, next_node.y)
+            
+            # Draw simple line between points
+            if abs(curr_x - next_x) > abs(curr_y - next_y):
+                # Horizontal line
+                start, end = (curr_x, next_x) if curr_x < next_x else (next_x, curr_x)
+                for x in range(start + 1, end):
+                    if 0 <= x < width and 0 <= curr_y < height:
+                        grid[curr_y][x] = symbol
+            else:
+                # Vertical line
+                start, end = (curr_y, next_y) if curr_y < next_y else (next_y, curr_y)
+                for y in range(start + 1, end):
+                    if 0 <= depot_x < width and 0 <= y < height:
+                        grid[y][depot_x] = symbol
+    
+    # Display grid with legend
+    print(f"Map Legend: 🏢=Depot, 🏭=IF, 📍=Customers, Route symbols show vehicle paths")
+    print(f"Map Area: {max_x - min_x:.0f} x {max_y - min_y:.0f} units")
+    print("\n" + "─" * (width + 4))
+    for row in grid:
+        print("│" + "".join(row) + "│")
+    print("─" * (width + 4))
+
+
+def display_detailed_route_analysis(solution, problem):
+    """Display detailed route analysis with ASCII art"""
+    print("\n" + "=" * 80)
+    print("📊 DETAILED ROUTE ANALYSIS")
+    print("=" * 80)
+    
+    for idx, route in enumerate(solution.routes):
+        print(f"\n🚛 Vehicle {idx + 1} Route Analysis:")
+        print("─" * 50)
+        
+        # Route sequence
+        print("📋 Route Sequence:")
+        sequence = " → ".join([f"{node.type.upper()}" for node in route.nodes])
+        print(f"   {sequence}")
+        
+        # Load profile
+        print(f"\n📦 Load Profile:")
+        current_load = 0
+        for i, node in enumerate(route.nodes):
+            if node.type == "customer":
+                current_load += node.demand
+                print(f"   {node.type.upper()}{node.id}: +{node.demand} (load: {current_load})")
+            elif node.type == "if":
+                current_load = 0  # Vehicle dumps waste
+                print(f"   {node.type.upper()}{node.id}: DUMP (load: {current_load})")
+        
+        # Efficiency metrics
+        print(f"\n📈 Efficiency Metrics:")
+        route_demand = sum(node.demand for node in route.nodes if node.type == 'customer')
+        utilization = route_demand / problem.vehicle_capacity
+        print(f"   Capacity Utilization: {utilization:.1%}")
+        print(f"   Distance: {route.total_distance:.2f} units")
+        print(f"   Time: {route.total_time:.2f} time units")
+        print(f"   Total Demand Served: {route_demand:.1f} units")
+        
+        # ASCII progress bar for utilization
+        bar_width = 20
+        filled = int(bar_width * utilization)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        print(f"   Utilization Bar: |{bar}|")
+
+
+def create_progress_tracker():
+    """Create a simple progress tracker for ALNS iterations"""
+    class ProgressTracker:
+        def __init__(self, total_iterations):
+            self.total = total_iterations
+            self.current = 0
+            self.last_percentage = -1
+        
+        def update(self, iteration):
+            self.current = iteration
+            percentage = int((iteration / self.total) * 100)
+            
+            # Only update if percentage changed (reduces spam)
+            if percentage != self.last_percentage:
+                self.last_percentage = percentage
+                bar_width = 30
+                filled = int(bar_width * iteration / self.total)
+                bar = "█" * filled + "░" * (bar_width - filled)
+                print(f"\r🔄 ALNS Progress: |{bar}| {percentage}% ({iteration}/{self.total})", end="")
+                
+                if percentage == 100:
+                    print()  # New line when complete
+    
+    return ProgressTracker
+
+
 def run_visualization_demo(
     solution, problem, save_plots=False, convergence_history=None
 ):
-    """Run visualization demonstration
-
-    This function now accepts an optional `convergence_history` list. If it is not
-    provided it will attempt to read `solution.solver.convergence_history` as a
-    fallback (defensive). This decouples the visualizer from requiring `solution`
-    to carry a `solver` attribute.
-    """
-    print("\n" + "=" * 60)
-    print("VISUALIZATION DEMONSTRATION")
-    print("=" * 60)
+    """Enhanced visualization demonstration with ASCII art and detailed analysis"""
+    print("\n" + "=" * 80)
+    print("🎨 COMPREHENSIVE VISUALIZATION DEMONSTRATION")
+    print("=" * 80)
 
     try:
-        # Create visualizer
+        # Display ASCII route map
+        display_ascii_route_map(solution, problem)
+        
+        # Display detailed route analysis
+        display_detailed_route_analysis(solution, problem)
+        
+        # Create visualizer for matplotlib plots
+        print(f"\n" + "=" * 80)
+        print("📊 MATPLOTLIB VISUALIZATION")
+        print("=" * 80)
+        
         visualizer = RouteVisualizer(problem)
 
         # Plot solution
         print("Generating route visualization...")
-        fig = visualizer.plot_solution(solution, "Waste Collection Routes")
+        fig = visualizer.plot_solution(solution, "Waste Collection Routes - ALNS Optimized")
 
         if save_plots:
             filename = f"routes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             fig.savefig(filename, dpi=300, bbox_inches="tight")
-            print(f"Plot saved as: {filename}")
+            print(f"✅ Route plot saved as: {filename}")
 
         # Plot convergence
-        print("Generating convergence plot...")
-        # Prefer explicit convergence_history argument; otherwise attempt to read from solution.solver
+        print("Generating convergence analysis...")
         conv_hist = convergence_history
         if conv_hist is None:
             solver_obj = getattr(solution, "solver", None)
@@ -390,20 +556,46 @@ def run_visualization_demo(
         conv_fig = visualizer.plot_convergence(conv_hist)
 
         if save_plots:
-            conv_filename = (
-                f"convergence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            )
+            conv_filename = f"convergence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             conv_fig.savefig(conv_filename, dpi=300, bbox_inches="tight")
-            print(f"Convergence plot saved as: {conv_filename}")
+            print(f"✅ Convergence plot saved as: {conv_filename}")
 
-        print("Visualization complete! (Plots would be displayed in interactive mode)")
+        # Performance summary
+        print(f"\n" + "=" * 80)
+        print("🎯 VISUALIZATION SUMMARY")
+        print("=" * 80)
+        print("✅ ASCII route map generated (terminal)")
+        print("✅ Detailed route analysis completed")
+        print("✅ Route visualization plotted")
+        if conv_hist:
+            print("✅ Convergence analysis generated")
+        print(f"✅ Total routes visualized: {len(solution.routes)}")
+        print("✅ All visualization complete!")
 
     except ImportError as e:
-        print(f"Visualization not available: {e}")
-        print("Install matplotlib: pip install matplotlib")
+        print(f"⚠️ Matplotlib visualization not available: {e}")
+        print("📦 Install matplotlib: pip install matplotlib")
+        
+        # Fallback to ASCII-only visualization
+        print("\n" + "=" * 60)
+        print("🖥️  ASCII-ONLY VISUALIZATION MODE")
+        print("=" * 60)
+        display_ascii_route_map(solution, problem)
+        display_detailed_route_analysis(solution, problem)
+        
     except Exception as e:
         # Do not let visualization failures crash the run.
-        print(f"Visualization failed: {e}")
+        print(f"⚠️ Visualization failed: {e}")
+        print("🔄 Attempting ASCII fallback...")
+        try:
+            display_ascii_route_map(solution, problem)
+            display_detailed_route_analysis(solution, problem)
+            print("✅ ASCII visualization completed successfully!")
+        except Exception as e2:
+            print(f"❌ Complete visualization failure: {e2}")
+            print("📋 Basic route summary:")
+            for idx, route in enumerate(solution.routes):
+                print(f"   Route {idx+1}: {len([n for n in route.nodes if n.type == 'customer'])} customers, {route.total_distance:.2f} distance")
 
 
 def save_results(solution, problem, analysis=None, filename=None):
@@ -413,6 +605,130 @@ def save_results(solution, problem, analysis=None, filename=None):
 
     save_solution_to_file(solution, filename)
     print(f"Results saved to: {filename}")
+
+
+def display_ascii_route_map(solution, problem):
+    """Display ASCII art route visualization in terminal"""
+    print("\n" + "=" * 80)
+    print("🗺️  ASCII ROUTE VISUALIZATION")
+    print("=" * 80)
+    
+    # Normalize coordinates for ASCII display
+    all_x = [problem.depot.x]
+    all_y = [problem.depot.y]
+    
+    for customer in problem.customers:
+        all_x.append(customer.x)
+        all_y.append(customer.y)
+    
+    for ifac in problem.intermediate_facilities:
+        all_x.append(ifac.x)
+        all_y.append(ifac.y)
+    
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+    
+    width, height = 60, 20
+    
+    # Create empty grid
+    grid = [[' ' for _ in range(width)] for _ in range(height)]
+    
+    # Function to convert coordinates to grid position
+    def coord_to_grid(x, y):
+        grid_x = int((x - min_x) / (max_x - min_x) * (width - 1))
+        grid_y = int((y - min_y) / (max_y - min_y) * (height - 1))
+        return grid_x, height - 1 - grid_y  # Flip Y axis
+    
+    # Place depot (red)
+    depot_x, depot_y = coord_to_grid(problem.depot.x, problem.depot.y)
+    grid[depot_y][depot_x] = '🏢'
+    
+    # Place intermediate facilities (green)
+    for ifac in problem.intermediate_facilities:
+        if_x, if_y = coord_to_grid(ifac.x, ifac.y)
+        grid[if_y][if_x] = '🏭'
+    
+    # Place customers (blue)
+    for customer in problem.customers:
+        c_x, c_y = coord_to_grid(customer.x, customer.y)
+        grid[c_y][c_x] = '📍'
+    
+    # Draw routes with different symbols
+    route_symbols = ['➤', '→', '↗', '↘', '◆', '◇']
+    
+    for i, route in enumerate(solution.routes):
+        symbol = route_symbols[i % len(route_symbols)]
+        
+        for j in range(len(route.nodes) - 1):
+            current = route.nodes[j]
+            next_node = route.nodes[j + 1]
+            
+            curr_x, curr_y = coord_to_grid(current.x, current.y)
+            next_x, next_y = coord_to_grid(next_node.x, next_node.y)
+            
+            # Draw simple line between points
+            if abs(curr_x - next_x) > abs(curr_y - next_y):
+                # Horizontal line
+                start, end = (curr_x, next_x) if curr_x < next_x else (next_x, curr_x)
+                for x in range(start + 1, end):
+                    if 0 <= x < width and 0 <= curr_y < height:
+                        grid[curr_y][x] = symbol
+            else:
+                # Vertical line
+                start, end = (curr_y, next_y) if curr_y < next_y else (next_y, curr_y)
+                for y in range(start + 1, end):
+                    if 0 <= depot_x < width and 0 <= y < height:
+                        grid[y][depot_x] = symbol
+    
+    # Display grid with legend
+    print(f"Map Legend: 🏢=Depot, 🏭=IF, 📍=Customers, Route symbols show vehicle paths")
+    print(f"Map Area: {max_x - min_x:.0f} x {max_y - min_y:.0f} units")
+    print("\n" + "─" * (width + 4))
+    for row in grid:
+        print("│" + "".join(row) + "│")
+    print("─" * (width + 4))
+
+
+def display_detailed_route_analysis(solution, problem):
+    """Display detailed route analysis with ASCII art"""
+    print("\n" + "=" * 80)
+    print("📊 DETAILED ROUTE ANALYSIS")
+    print("=" * 80)
+    
+    for idx, route in enumerate(solution.routes):
+        print(f"\n🚛 Vehicle {idx + 1} Route Analysis:")
+        print("─" * 50)
+        
+        # Route sequence
+        print("📋 Route Sequence:")
+        sequence = " → ".join([f"{node.type.upper()}" for node in route.nodes])
+        print(f"   {sequence}")
+        
+        # Load profile
+        print(f"\n📦 Load Profile:")
+        current_load = 0
+        for i, node in enumerate(route.nodes):
+            if node.type == "customer":
+                current_load += node.demand
+                print(f"   {node.type.upper()}{node.id}: +{node.demand} (load: {current_load})")
+            elif node.type == "if":
+                current_load = 0  # Vehicle dumps waste
+                print(f"   {node.type.upper()}{node.id}: DUMP (load: {current_load})")
+        
+        # Efficiency metrics
+        print(f"\n📈 Efficiency Metrics:")
+        route_demand = sum(node.demand for node in route.nodes if node.type == 'customer')
+        utilization = route_demand / problem.vehicle_capacity
+        print(f"   Capacity Utilization: {utilization:.1%}")
+        print(f"   Distance: {route.total_distance:.2f} units")
+        print(f"   Time: {route.total_time:.2f} time units")
+        print(f"   Total Demand Served: {route_demand:.1f} units")
+        
+        # ASCII progress bar for utilization
+        bar_width = 20
+        filled = int(bar_width * utilization)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        print(f"   Utilization Bar: |{bar}|")
 
 
 def main():
@@ -527,12 +843,24 @@ Examples:
             print("Comprehensive demonstration did not produce a solution. Exiting.")
             return
 
-    # Visualization (only if we have a solution)
-    if solution is not None and (args.verbose or args.save_plots):
+    # Enhanced Visualization (only if we have a solution)
+    if solution is not None and (args.verbose or args.save_plots or args.demo):
         try:
-            run_visualization_demo(solution, problem, save_plots=args.save_plots)
+            # Get convergence history for visualization
+            conv_hist = None
+            if solver is not None:
+                conv_hist = getattr(solver, "convergence_history", [])
+            
+            run_visualization_demo(solution, problem, save_plots=args.save_plots, convergence_history=conv_hist)
         except Exception as e:
             print(f"Visualization aborted: {e}")
+    elif solution is not None and args.demo == "comprehensive":
+        # Always show ASCII visualization for comprehensive demo
+        try:
+            display_ascii_route_map(solution, problem)
+            display_detailed_route_analysis(solution, problem)
+        except Exception as e:
+            print(f"ASCII visualization aborted: {e}")
 
     # Save results (only if we have a solution)
     if solution is not None and args.save_results:
