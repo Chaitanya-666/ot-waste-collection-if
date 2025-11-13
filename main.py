@@ -28,6 +28,109 @@ from src.alns import ALNS
 from src.data_generator import DataGenerator
 from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file
 
+# Video creation imports (if available)
+try:
+    # Try importing from workspace root first, then current directory
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from simple_video_creator import SimpleVideoCreator
+    VIDEO_CREATOR_AVAILABLE = True
+except ImportError:
+    try:
+        from simple_video_creator import SimpleVideoCreator
+        VIDEO_CREATOR_AVAILABLE = True
+    except ImportError:
+        VIDEO_CREATOR_AVAILABLE = False
+
+
+class OptimizationVideoTracker:
+    """Track optimization history for video creation"""
+    
+    def __init__(self, problem: ProblemInstance):
+        self.problem = problem
+        self.optimization_history = []
+        self.current_best_cost = float('inf')
+        
+    def track_state(self, iteration: int, solution, current_cost: float):
+        """Track optimization state for video"""
+        
+        # Extract route coordinates for visualization
+        routes_coords = []
+        if solution and hasattr(solution, 'routes'):
+            for route in solution.routes:
+                route_coords = []
+                for node in route.nodes:
+                    route_coords.append((node.x, node.y))
+                routes_coords.append(route_coords)
+        
+        state = {
+            'iteration': iteration,
+            'cost': current_cost,
+            'best_cost': self.current_best_cost,
+            'routes': routes_coords
+        }
+        
+        # Update best cost
+        if current_cost < self.current_best_cost:
+            self.current_best_cost = current_cost
+            
+        self.optimization_history.append(state)
+        
+    def create_video(self, output_filename: str = None) -> str:
+        """Create optimization video from tracked history"""
+        if not VIDEO_CREATOR_AVAILABLE:
+            print("⚠️ Video creation not available - install requirements")
+            return None
+            
+        if not self.optimization_history:
+            print("⚠️ No optimization history to create video")
+            return None
+            
+        try:
+            # Prepare data for video creator
+            customer_data = {}
+            for customer in self.problem.customers:
+                customer_data[(customer.x, customer.y)] = customer.demand
+                
+            intermediate_facs = [(ifac.x, ifac.y) for ifac in self.problem.intermediate_facilities]
+            depot_location = (self.problem.depot.x, self.problem.depot.y)
+            
+            # Initialize video creator
+            video_creator = SimpleVideoCreator()
+            
+            # Create video
+            if output_filename is None:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_filename = f"alns_optimization_{timestamp}.gif"
+                
+            video_path = video_creator.create_optimization_animation(
+                optimization_history=self.optimization_history,
+                customer_data=customer_data,
+                depot_location=depot_location,
+                intermediate_facilities=intermediate_facs,
+                output_filename=output_filename
+            )
+            
+            if video_path:
+                print(f"🎬 Optimization video created: {video_path}")
+                
+                # Create cost convergence video too
+                costs = [state['cost'] for state in self.optimization_history]
+                cost_filename = output_filename.replace('.gif', '_cost.gif')
+                cost_path = video_creator.create_cost_animation(
+                    costs=costs,
+                    output_filename=cost_filename
+                )
+                if cost_path:
+                    print(f"📊 Cost convergence video created: {cost_path}")
+                    
+            return video_path
+            
+        except Exception as e:
+            print(f"⚠️ Video creation failed: {e}")
+            return None
+
 
 def create_sample_instance() -> ProblemInstance:
     """Create the original sample instance for demonstration"""
@@ -79,7 +182,7 @@ def create_comprehensive_instance() -> ProblemInstance:
     )
 
 
-def run_basic_demonstration():
+def run_basic_demonstration(create_video: bool = False, args=None):
     """Run the basic demonstration with original sample"""
     print("\n" + "=" * 60)
     print("BASIC DEMONSTRATION")
@@ -98,12 +201,44 @@ def run_basic_demonstration():
     solver = ALNS(problem)
     solver.max_iterations = 200
 
+    # Initialize video tracker if enabled
+    video_tracker = None
+    if create_video:
+        if VIDEO_CREATOR_AVAILABLE:
+            video_tracker = OptimizationVideoTracker(problem)
+            print("🎬 Video tracking enabled - optimization process will be recorded!")
+        else:
+            print("⚠️ Video tracking requested but video creator not available")
+
+    # Set up video tracking callback if enabled
+    if video_tracker:
+        def _video_callback(iteration_idx, best_solution):
+            try:
+                # Track state for video (every 10 iterations to avoid too many frames)
+                if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
+                    current_cost = getattr(best_solution, 'total_cost', float('inf'))
+                    video_tracker.track_state(iteration_idx, best_solution, current_cost)
+            except Exception:
+                pass
+        solver.iteration_callback = _video_callback
+
     # Run optimization
     print(f"\nStarting ALNS optimization with {solver.max_iterations} iterations...")
     start_time = time.time()
 
     solution = solver.run(max_iterations=solver.max_iterations)
     end_time = time.time()
+
+    # Create optimization video if tracking was enabled
+    if video_tracker:
+        try:
+            print("\n🎬 Creating optimization video from tracked history...")
+            video_path = video_tracker.create_video()
+            if video_path:
+                print("✅ Optimization video created successfully!")
+        except Exception as e:
+            print(f"⚠️ Video creation failed: {e}")
+            pass
 
     print(f"ALNS completed in {end_time - start_time:.2f} seconds")
 
@@ -130,7 +265,7 @@ def run_basic_demonstration():
 
 
 def run_comprehensive_demonstration(
-    live: bool = False, iterations: int = 500
+    live: bool = False, iterations: int = 500, create_video: bool = False, args=None
 ) -> Tuple[
     Optional[object], ProblemInstance, Optional[object], Optional[Dict[str, Any]]
 ]:
@@ -191,6 +326,15 @@ def run_comprehensive_demonstration(
     solver = ALNS(problem)
     solver.max_iterations = int(iterations)
 
+    # Initialize video tracker if enabled
+    video_tracker = None
+    if create_video:
+        if VIDEO_CREATOR_AVAILABLE:
+            video_tracker = OptimizationVideoTracker(problem)
+            print("🎬 Video tracking enabled - optimization process will be recorded!")
+        else:
+            print("⚠️ Video tracking requested but video creator not available")
+
     # Progress tracking for optimization
     ProgressTracker = create_progress_tracker()
     progress = ProgressTracker(solver.max_iterations)
@@ -204,6 +348,14 @@ def run_comprehensive_demonstration(
 
             def _iteration_callback(iteration_idx, best_solution):
                 progress.update(iteration_idx)
+                if video_tracker:
+                    try:
+                        # Track state for video (every 10 iterations to avoid too many frames)
+                        if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
+                            current_cost = getattr(best_solution, 'total_cost', float('inf'))
+                            video_tracker.track_state(iteration_idx, best_solution, current_cost)
+                    except Exception:
+                        pass
                 try:
                     visualizer.update_live(
                         best_solution, getattr(solver, "convergence_history", [])
@@ -221,6 +373,14 @@ def run_comprehensive_demonstration(
         # Add progress callback without visualization
         def _progress_callback(iteration_idx, best_solution):
             progress.update(iteration_idx)
+            if video_tracker:
+                try:
+                    # Track state for video (every 10 iterations to avoid too many frames)
+                    if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
+                        current_cost = getattr(best_solution, 'total_cost', float('inf'))
+                        video_tracker.track_state(iteration_idx, best_solution, current_cost)
+                except Exception:
+                    pass
         
         solver.iteration_callback = _progress_callback
 
@@ -246,6 +406,17 @@ def run_comprehensive_demonstration(
     # Performance analysis
     analyzer = PerformanceAnalyzer(problem)
     analysis = analyzer.analyze_solution(solution)
+    
+    # Create optimization video if tracking was enabled
+    if video_tracker:
+        try:
+            print("\n🎬 Creating optimization video from tracked history...")
+            video_path = video_tracker.create_video()
+            if video_path:
+                print("✅ Optimization video created successfully!")
+        except Exception as e:
+            print(f"⚠️ Video creation failed: {e}")
+            pass
 
     # Display comprehensive results
     print("\n" + "-" * 60)
@@ -741,6 +912,8 @@ Examples:
   python main.py --demo basic           # Run basic demonstration
   python main.py --demo comprehensive   # Run comprehensive demonstration
   python main.py --demo benchmark       # Run benchmark demonstration
+  python main.py --demo comprehensive --video  # Run with video creation
+  python main.py --live --video         # Run live with video recording
   python main.py --instance small.json  # Solve from instance file
   python main.py --config config.json   # Use configuration file
         """,
@@ -782,6 +955,11 @@ Examples:
     )
 
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    
+    parser.add_argument(
+        "--video", action="store_true", 
+        help="Create optimization video showing route evolution during ALNS"
+    )
 
     args = parser.parse_args()
 
@@ -803,10 +981,15 @@ Examples:
     # Handle different modes
     if args.demo:
         if args.demo == "basic":
-            solution, problem, solver = run_basic_demonstration()
+            solution, problem, solver = run_basic_demonstration(
+                create_video=getattr(args, "video", False)
+            )
         elif args.demo == "comprehensive":
             result = run_comprehensive_demonstration(
-                live=getattr(args, "live", False), iterations=args.iterations
+                live=getattr(args, "live", False), 
+                iterations=args.iterations,
+                create_video=getattr(args, "video", False),
+                args=args
             )
             solution, problem, solver, analysis = result
             if solution is None:
@@ -836,7 +1019,10 @@ Examples:
     else:
         # Default: run comprehensive demonstration (respect --live if provided)
         result = run_comprehensive_demonstration(
-            live=getattr(args, "live", False), iterations=args.iterations
+            live=getattr(args, "live", False), 
+            iterations=args.iterations,
+            create_video=getattr(args, "video", False),
+            args=args
         )
         solution, problem, solver, analysis = result
         if solution is None:
