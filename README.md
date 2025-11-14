@@ -16,7 +16,7 @@ This project implements an advanced **Vehicle Routing Problem (VRP) with Interme
 
 **Municipal waste collection** faces unique challenges:
 - **Limited vehicle capacity** requires intermediate facility visits for waste disposal
-- **Multiple depots and facilities** with different capacities and locations  
+- **Multiple depots and facilities** with different capacities and locations
 - **Time-dependent constraints** for collection windows
 - **Environmental optimization** to reduce fuel consumption and emissions
 - **Cost minimization** for municipal budgeting
@@ -143,7 +143,7 @@ repeat for max_iterations:
 ```python
 class ProblemInstance:
     """Defines VRP-IF problem parameters and constraints"""
-    
+
     def __init__(self, name: str):
         self.name = name
         self.depot: Location = None
@@ -153,11 +153,11 @@ class ProblemInstance:
         self.number_of_vehicles: int = float('inf')
         self.disposal_time: float = 0
         self.distance_matrix: List[List[float]] = []
-        
+
     def calculate_distance_matrix(self):
         """Compute pairwise distances using Euclidean metric"""
         # Implementation details...
-        
+
     def is_feasible(self) -> Tuple[bool, str]:
         """Check problem feasibility given constraints"""
         # Implementation details...
@@ -167,7 +167,7 @@ class ProblemInstance:
 ```python
 class ALNS:
     """Adaptive Large Neighborhood Search implementation"""
-    
+
     def __init__(self, problem: ProblemInstance):
         self.problem = problem
         self.destroy_operators = [
@@ -180,11 +180,11 @@ class ALNS:
             RegretInsertion()
         ]
         self.operator_weights = [1.0] * len(self.destroy_operators)
-        
+
     def run(self, max_iterations: int) -> Solution:
         """Execute ALNS optimization"""
         # Implementation details...
-        
+
     def _select_operator(self, operator_type: str) -> Callable:
         """Adaptive operator selection based on performance"""
         # Implementation details...
@@ -194,14 +194,14 @@ class ALNS:
 ```python
 class Solution:
     """Represents a complete VRP-IF solution"""
-    
+
     def __init__(self):
         self.routes: List[Route] = []
         self.unassigned_customers: List[Location] = []
         self.total_cost: float = 0
         self.total_distance: float = 0
         self.total_time: float = 0
-        
+
     def evaluate(self, problem: ProblemInstance):
         """Calculate total solution cost"""
         # Implementation details...
@@ -211,8 +211,8 @@ class Solution:
 ```python
 class SimpleVideoCreator:
     """Creates animated optimization process videos"""
-    
-    def create_optimization_animation(self, 
+
+    def create_optimization_animation(self,
                                      optimization_history: List[Dict],
                                      customer_data: Dict,
                                      depot_location: Tuple[float, float],
@@ -291,7 +291,7 @@ class RandomRemoval:
     def apply(self, solution: Solution, removal_count: int):
         """Remove random customers from solution"""
         customers_to_remove = random.sample(
-            solution.served_customers, 
+            solution.served_customers,
             min(removal_count, len(solution.served_customers))
         )
         for customer in customers_to_remove:
@@ -340,14 +340,14 @@ class OptimizationVideoTracker:
     def track_state(self, iteration: int, solution: Solution, cost: float):
         """Record optimization state for video creation"""
         route_coordinates = self._extract_route_coordinates(solution)
-        
+
         state = {
             'iteration': iteration,
             'cost': cost,
             'best_cost': self.current_best_cost,
             'routes': route_coordinates
         }
-        
+
         self.optimization_history.append(state)
 ```
 
@@ -357,15 +357,15 @@ def _calculate_dynamic_bounds(self, points: List[Tuple[float, float]]):
     """Calculate plot bounds based on data extent"""
     x_coords = [p[0] for p in points]
     y_coords = [p[1] for p in points]
-    
+
     min_x, max_x = min(x_coords), max(x_coords)
     min_y, max_y = min(y_coords), max(y_coords)
-    
+
     # Add 10% padding for better visualization
     padding_x = (max_x - min_x) * 0.1
     padding_y = (max_y - min_y) * 0.1
-    
-    return (min_x - padding_x, max_x + padding_x, 
+
+    return (min_x - padding_x, max_x + padding_x,
             min_y - padding_y, max_y + padding_y)
 ```
 
@@ -373,18 +373,18 @@ def _calculate_dynamic_bounds(self, points: List[Tuple[float, float]]):
 ```python
 def create_optimization_animation(self, history: List[Dict], ...):
     """Generate MP4/GIF of optimization process"""
-    
+
     def animate_frame(frame_num):
         ax.clear()
         current_state = history[frame_num]
-        
+
         # Plot all components with dynamic scaling
         self._plot_depot(ax, depot_location)
         self._plot_customers(ax, customer_data)
         self._plot_facilities(ax, intermediate_facilities)
         self._plot_routes(ax, current_state['routes'])
         self._add_metrics_text(ax, current_state)
-    
+
     # Create matplotlib animation
     anim = FuncAnimation(fig, animate_frame, frames=len(history))
     return self._save_animation(anim, output_filename)
@@ -397,7 +397,7 @@ def create_optimization_animation(self, history: List[Dict], ...):
 class PerformanceAnalyzer:
     def analyze_solution(self, solution: Solution, problem: ProblemInstance):
         """Comprehensive solution analysis"""
-        
+
         analysis = {
             'total_cost': solution.total_cost,
             'total_distance': solution.total_distance,
@@ -407,7 +407,7 @@ class PerformanceAnalyzer:
             'distance_efficiency': self._calculate_distance_efficiency(solution),
             'unassigned_customers': len(solution.unassigned_customers)
         }
-        
+
         return analysis
 ```
 
@@ -415,7 +415,7 @@ class PerformanceAnalyzer:
 ```python
 def analyze_route(self, route: Route, problem: ProblemInstance):
     """Detailed analysis of individual routes"""
-    
+
     route_analysis = {
         'distance': route.total_distance,
         'time': route.total_time,
@@ -424,15 +424,15 @@ def analyze_route(self, route: Route, problem: ProblemInstance):
         'max_load': max(route.load_profile) if route.load_profile else 0,
         'capacity_utilization': sum(route.demands) / problem.vehicle_capacity
     }
-    
+
     return route_analysis
 ```
 
 ---
 
-## 👥 **Author Contributions (50/50)**
+## 👥 **Author Contributions ( approximately 50 - 50 contirbution was done )**
 
-### **Harsh Sharma - Algorithm Development & Core Implementation (50%)**
+### **Chaitanya Shinde - Algorithm Development & Core Implementation (50%)**
 
 **Primary Responsibilities:**
 - **ALNS Algorithm Design and Implementation**
@@ -473,7 +473,7 @@ def analyze_route(self, route: Route, problem: ProblemInstance):
 
 ---
 
-### **Chaitanya Shinde - Visualization & User Experience (50%)**
+### **Harsh Sharma - Visualization & User Experience (50%)**
 
 **Primary Responsibilities:**
 - **Video Creation and Animation System**
@@ -737,43 +737,59 @@ python -m unittest test_performance
 ## 📁 **Project Structure**
 
 ```
-municipal-waste-collection-vrp/
-├── main.py                          # Main application entry point
-├── requirements.txt                 # Python dependencies
-├── README.md                        # This comprehensive documentation
-├── 
-├── src/                             # Core source code
-│   ├── __init__.py
-│   ├── alns.py                     # ALNS optimization engine
-│   ├── problem.py                  # Problem definition and constraints
-│   ├── solution.py                 # Solution representation
-│   ├── route.py                    # Individual route handling
-│   ├── destroy_operators.py        # Destruction heuristics
-│   ├── repair_operators.py         # Repair heuristics
-│   ├── data_generator.py           # Problem instance generation
-│   ├── utils.py                    # Utility functions and visualization
-│   └── enhanced_validator.py       # Solution validation
-├── 
-├── tests/                          # Test suite
-│   ├── test_alns.py               # ALNS algorithm tests
-│   ├── test_problem.py            # Problem definition tests
-│   ├── test_solution.py           # Solution validation tests
-│   └── test_performance.py        # Performance benchmark tests
-├── 
-├── optimization_videos/            # Generated optimization videos
-│   ├── alns_optimization_*.gif    # Route evolution videos
-│   ├── cost_convergence_*.gif     # Cost improvement videos
-│   └── frames/                    # Individual animation frames
-├── 
-├── examples/                       # Usage examples and tutorials
-│   ├── basic_usage.py             # Basic API usage example
-│   ├── advanced_configuration.py  # Advanced parameter setting
-│   └── custom_problem.py          # Custom problem creation
-└── 
-└── docs/                          # Additional documentation
-    ├── ALGORITHM_DETAILS.md       # Detailed algorithm documentation
-    ├── PERFORMANCE_ANALYSIS.md    # Performance analysis reports
-    └── TROUBLESHOOTING.md         # Common issues and solutions
+.
+└── ot-waste-collection-if
+    ├── alns_video_integration.py
+    ├── CHANGELOG.md
+    ├── comprehensive_test_suite.py
+    ├── ENHANCEMENT_COMPLETION.md
+    ├── FINAL_IMPLEMENTATION_SUMMARY.md
+    ├── main.py
+    ├── optimization_video_creator.py
+    ├── optimization_videos
+    │   ├── alns_optimization_20251114_004115_cost.gif
+    │   ├── alns_optimization_20251114_004115.gif
+    │   ├── alns_optimization_20251114_005645_cost.gif
+    │   ├── alns_optimization_20251114_005645.gif
+    │   └── frames
+    ├── __pycache__
+    │   └── simple_video_creator.cpython-313.pyc
+    ├── QUICK_REFERENCE.md
+    ├── README_ARCH_LINUX.md
+    ├── README.md
+    ├── requirements.txt
+    ├── setup_and_demo.py
+    ├── setup_arch.sh
+    ├── simple_video_creator.py
+    ├── src
+    │   ├── alns.py
+    │   ├── benchmarking.py
+    │   ├── data_generator.py
+    │   ├── destroy_operators.py
+    │   ├── enhanced_construction.py
+    │   ├── enhanced_validator.py
+    │   ├── __init__.py
+    │   ├── problem.py
+    │   ├── __pycache__
+    │   ├── repair_operators.py
+    │   ├── solution.py
+    │   └── utils.py
+    ├── test_alns_functionality.py
+    ├── tests
+    │   └── test_all.py
+    ├── test_video_integration.py
+    ├── venv
+    │   ├── bin
+    │   ├── include
+    │   ├── lib
+    │   ├── lib64 -> lib
+    │   ├── pyvenv.cfg
+    │   └── share
+    ├── VERIFICATION_REPORT.md
+    ├── VERIFICATION_SUMMARY.md
+    ├── verify_project.py
+    ├── VIDEO_GUIDE.md
+    └── video_requirements.txt
 ```
 
 ---
@@ -938,12 +954,12 @@ python main.py --instance your_problem.json --verbose
 ## 📜 **License and Citation**
 
 **Academic License:**
-This project is developed for academic and research purposes. 
+This project is developed for academic and research purposes.
 
 **Citation:**
 ```
 Municipal Waste Collection Route Optimization using ALNS
-Sharma, H. & Shinde, C. (2025)
+Chaitanya Shinde - 231070066 | Harsh Sharma - 231070064 | TYBTECH CE (2025)
 Vehicle Routing Problem with Intermediate Facilities
 ```
 
@@ -974,6 +990,6 @@ The system is production-ready for municipal planning applications, research pro
 
 ---
 
-*Last Updated: November 14, 2025*  
-*Version: 2.1 - Enhanced with Video Creation*  
-*Authors: Harsh Sharma & Chaitanya Shinde*
+*Last Updated: November 14, 2025*
+*Version: 2.1 - Enhanced with Video Creation*
+*© 2025 Municipal Waste Collection Route Optimization Project. All rights reserved . Harsh Sharma & Chaitanya Shinde*
