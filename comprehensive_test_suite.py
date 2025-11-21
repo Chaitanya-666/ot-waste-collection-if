@@ -11,10 +11,29 @@ import tempfile
 import shutil
 from pathlib import Path
 
-# Add project directory to path
-project_dir = Path(__file__).parent / "OT_Project_ALNS_VRP_FIXED"
+# Author: Harsh Sharma (231070064)
+#
+# This file contains the comprehensive test suite for the entire project.
+# It uses Python's `unittest` framework to verify the correctness of all
+# components, including the data structures, ALNS algorithm, operators,
+# and utilities. This is the main test suite for the project.
+#!/usr/bin/env python3
+"""
+Comprehensive Test Suite for ALNS VRP with Video Creation
+Tests small, medium, and large problem instances
+"""
+
+import unittest
+import sys
+import os
+import tempfile
+import shutil
+from pathlib import Path
+
+# Correctly add the project root directory to the Python path
+project_dir = Path(__file__).parent
 sys.path.insert(0, str(project_dir))
-sys.path.insert(0, str(project_dir.parent))
+
 
 class TestALNSVRPBasic(unittest.TestCase):
     """Test basic ALNS VRP functionality without video creation"""
@@ -104,27 +123,9 @@ class TestALNSVRPBasic(unittest.TestCase):
 
 class TestALNSVRPMedium(unittest.TestCase):
     """Test medium-sized ALNS VRP functionality"""
-    
-    def setUp(self):
-        """Set up medium test environment"""
-        self.original_dir = os.getcwd()
-        self.test_dir = tempfile.mkdtemp()
-        os.chdir(self.test_dir)
-        
-        # Copy project files
-        project_src = Path(__file__).parent / "OT_Project_ALNS_VRP_FIXED"
-        shutil.copytree(project_src, "project", dirs_exist_ok=True)
-        
-    def tearDown(self):
-        """Clean up medium test environment"""
-        os.chdir(self.original_dir)
-        shutil.rmtree(self.test_dir, ignore_errors=True)
-        
+
     def test_medium_problem_solve(self):
         """Test solving a medium-sized problem"""
-        # This test uses the project's own modules
-        sys.path.insert(0, os.path.join(self.test_dir, "project", "src"))
-        
         try:
             from src.problem import ProblemInstance, Location
             from src.alns import ALNS
@@ -156,8 +157,6 @@ class TestALNSVRPMedium(unittest.TestCase):
     
     def test_performance_analysis(self):
         """Test performance analysis on medium problem"""
-        sys.path.insert(0, os.path.join(self.test_dir, "project", "src"))
-        
         try:
             from src.data_generator import DataGenerator
             from src.alns import ALNS

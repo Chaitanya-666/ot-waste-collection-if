@@ -29,8 +29,8 @@ import json
 from unittest.mock import patch, MagicMock
 import time
 
-# Add the src directory to the path for direct imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Add the project root directory to the path to allow absolute imports from src
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Import all necessary components from the source code
 from src.problem import ProblemInstance, Location
@@ -210,32 +210,5 @@ class TestIntegration(unittest.TestCase):
         self.assertGreater(analysis["total_cost"], 0)
 
 
-def run_all_tests():
-    """Discovers and runs all tests in this file."""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-
-    # Add all test classes to the suite
-    test_classes = [
-        TestProblemInstance,
-        TestSolution,
-        TestDestroyOperators,
-        TestRepairOperators,
-        TestALNSAlgorithm,
-        TestDataGenerator,
-        TestUtilities,
-        TestIntegration,
-    ]
-    for test_class in test_classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-
-    # Run the test suite
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    return result.wasSuccessful()
-
-
 if __name__ == "__main__":
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    unittest.main()
