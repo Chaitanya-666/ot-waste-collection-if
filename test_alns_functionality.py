@@ -1,3 +1,7 @@
+# Author: Harsh Sharma (231070064)
+#
+# This file is a simple test script to verify the basic functionality of
+# the ALNS VRP-IF solver.
 #!/usr/bin/env python3
 """
 Simple test script to verify ALNS VRP-IF functionality

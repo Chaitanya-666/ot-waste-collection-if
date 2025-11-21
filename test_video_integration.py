@@ -1,3 +1,7 @@
+# Author: Harsh Sharma (231070064)
+#
+# This file is a test script to verify that the updated main.py with video
+# creation works correctly.
 #!/usr/bin/env python3
 """
 Test script to verify that the updated main.py with video creation works correctly
