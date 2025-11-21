@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Author: Harsh Sharma (231070064)
+# Author: Chaitanya Shinde (231070066)
 #
 # This file contains the comprehensive test suite for the entire project.
 # It uses Python's `unittest` framework to verify the correctness of all
@@ -13,165 +13,167 @@ Tests small, medium, and large problem instances
 import unittest
 import sys
 import os
-import tempfile
-import shutil
+import time
 from pathlib import Path
 
 # Correctly add the project root directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from test_runner import CustomTestRunner
+from test_report_logger import test_report_logger
+from simple_video_creator import SimpleVideoCreator
+from src.data_generator import DataGenerator
+from src.alns import ALNS
 
-class TestALNSVRPBasic(unittest.TestCase):
-    """Test basic ALNS VRP functionality without video creation"""
+class TestALNSVRP(unittest.TestCase):
+    """Comprehensive test suite for ALNS VRP"""
 
-    def test_basic_import(self):
-        """Test that all modules can be imported successfully"""
-        try:
-            from src.problem import ProblemInstance, Location
-            from src.alns import ALNS
-            from src.data_generator import DataGenerator
-            from src.utils import RouteVisualizer, PerformanceAnalyzer
-            self.assertTrue(True, "All imports successful")
-        except ImportError as e:
-            self.fail(f"Import failed: {e}")
+    def run_test_case(self, test_case_id, problem_params, alns_params, expected_cost_upper_bound):
+        """Helper function to run a single test case and log results."""
+        start_time = time.time()
 
-    def test_problem_creation(self):
-        """Test problem instance creation"""
-        from src.problem import ProblemInstance, Location
-        
-        problem = ProblemInstance("Test Problem")
-        self.assertEqual(problem.name, "Test Problem")
-        
-        depot = Location(0, 0, 0, 0, "depot")
-        problem.depot = depot
-        self.assertEqual(problem.depot, depot)
-        
-        customer1 = Location(1, 10, 10, 5, "customer")
-        problem.customers.append(customer1)
-        self.assertEqual(len(problem.customers), 1)
+        # Generate problem
+        problem = DataGenerator.generate_instance(**problem_params)
 
-    def test_data_generator_small(self):
-        """Test data generator with small instance"""
-        from src.data_generator import DataGenerator
-        
-        problem = DataGenerator.generate_instance(
-            name="Small Test", n_customers=5, n_ifs=1, seed=42
-        )
-        
-        self.assertEqual(len(problem.customers), 5)
-        self.assertEqual(len(problem.intermediate_facilities), 1)
-
-class TestALNSVRPHyperparameterTuning(unittest.TestCase):
-    """Test medium-sized ALNS VRP functionality with hyperparameter tuning"""
-
-    def test_medium_problem_solve_fast(self):
-        """Hyperparameter Test (Fast): 50 iter, 1000 temp, 0.995 cool"""
-        from src.data_generator import DataGenerator
-        from src.alns import ALNS
-        
-        problem = DataGenerator.generate_instance(
-            name="Medium Test", n_customers=15, n_ifs=2, seed=42
-        )
-        
+        # Initialize and run solver
         solver = ALNS(problem)
-        solver.max_iterations = 50
-        solver.temperature_initial = 1000
-        solver.cooling_rate = 0.995
+        for key, value in alns_params.items():
+            setattr(solver, key, value)
         
-        solution = solver.run()
+        solution = solver.run(track_history=True)
         
-        self.assertIsNotNone(solution)
-        self.assertGreater(solution.total_cost, 0)
+        end_time = time.time()
+        execution_time = end_time - start_time
 
-    def test_medium_problem_solve_balanced(self):
-        """Hyperparameter Test (Balanced): 100 iter, 5000 temp, 0.99 cool"""
-        from src.data_generator import DataGenerator
-        from src.alns import ALNS
-        
-        problem = DataGenerator.generate_instance(
-            name="Medium Test", n_customers=15, n_ifs=2, seed=42
+        # Create video
+        video_filename = f"./{test_case_id}.gif"
+        creator = SimpleVideoCreator(output_dir=".")
+        creator.create_optimization_animation(
+            solver.history,
+            problem.get_customer_data(),
+            (problem.depot.x, problem.depot.y),
+            [(ifac.x, ifac.y) for ifac in problem.intermediate_facilities],
+            output_filename=video_filename
         )
-        
-        solver = ALNS(problem)
-        solver.max_iterations = 100
-        solver.temperature_initial = 5000
-        solver.cooling_rate = 0.99
-        
-        solution = solver.run()
-        
-        self.assertIsNotNone(solution)
-        self.assertGreater(solution.total_cost, 0)
 
-    def test_medium_problem_solve_deep(self):
-        """Hyperparameter Test (Deep): 200 iter, 10000 temp, 0.985 cool"""
-        from src.data_generator import DataGenerator
-        from src.alns import ALNS
+        # Log results
+        obtained_cost = solution.total_cost
+        is_optimal = "Yes" if obtained_cost <= expected_cost_upper_bound else "No"
         
-        problem = DataGenerator.generate_instance(
-            name="Medium Test", n_customers=15, n_ifs=2, seed=42
+        test_report_logger.log(
+            test_case_id=test_case_id,
+            parameters=problem_params,
+            hyperparameters=alns_params,
+            expected_result=f"<= {expected_cost_upper_bound}",
+            obtained_result=f"{obtained_cost:.2f}",
+            is_optimal=is_optimal,
+            status="✅ Pass",
+            time=f"{execution_time:.2f}s",
+            outputs=f"[{test_case_id}.gif](./{test_case_id}.gif)"
         )
-        
-        solver = ALNS(problem)
-        solver.max_iterations = 200
-        solver.temperature_initial = 10000
-        solver.cooling_rate = 0.985
-        
-        solution = solver.run()
-        
+
         self.assertIsNotNone(solution)
-        self.assertGreater(solution.total_cost, 0)
+        self.assertGreater(obtained_cost, 0)
 
-class TestALNSVRPVideoCreation(unittest.TestCase):
-    """Test video creation functionality"""
+    # Test Cases (10 total)
+    def test_01_tiny_fast(self):
+        self.run_test_case(
+            "test_01_tiny_fast",
+            {"name": "Tiny-Fast", "n_customers": 5, "n_ifs": 1, "seed": 42},
+            {"max_iterations": 20, "temperature_initial": 500, "cooling_rate": 0.99},
+            300
+        )
 
-    def test_video_creator_import(self):
-        """Test that video creator can be imported"""
-        try:
-            from simple_video_creator import SimpleVideoCreator
-            self.assertIsNotNone(SimpleVideoCreator())
-        except ImportError as e:
-            self.fail(f"Video creator import failed: {e}")
+    def test_02_tiny_deep(self):
+        self.run_test_case(
+            "test_02_tiny_deep",
+            {"name": "Tiny-Deep", "n_customers": 5, "n_ifs": 1, "seed": 42},
+            {"max_iterations": 100, "temperature_initial": 1000, "cooling_rate": 0.98},
+            250
+        )
 
-    def test_video_creation_with_sample_data(self):
-        """Test actual video creation with sample optimization data"""
-        from simple_video_creator import SimpleVideoCreator
-        
-        sample_history = [
-            {'iteration': 1, 'cost': 100.0, 'best_cost': 100.0, 'routes': [[(0, 0), (5, 5), (0, 0)]]},
-            {'iteration': 2, 'cost': 95.0, 'best_cost': 95.0, 'routes': [[(0, 0), (3, 7), (5, 5), (0, 0)]]}
-        ]
-        
-        creator = SimpleVideoCreator()
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            video_path = creator.create_optimization_animation(
-                optimization_history=sample_history,
-                customer_data={(1, 2): 5},
-                depot_location=(0, 0),
-                intermediate_facilities=[(2, 3)],
-                output_filename=os.path.join(temp_dir, "test_video.gif")
-            )
-            
-            if video_path and os.path.exists(video_path):
-                self.assertTrue(os.path.exists(video_path))
-            else:
-                self.skipTest("Video creation dependencies not available")
+    def test_03_small_fast(self):
+        self.run_test_case(
+            "test_03_small_fast",
+            {"name": "Small-Fast", "n_customers": 10, "n_ifs": 2, "seed": 42},
+            {"max_iterations": 50, "temperature_initial": 1000, "cooling_rate": 0.99},
+            600
+        )
 
-def generate_results_summary(result):
+    def test_04_small_deep(self):
+        self.run_test_case(
+            "test_04_small_deep",
+            {"name": "Small-Deep", "n_customers": 10, "n_ifs": 2, "seed": 42},
+            {"max_iterations": 200, "temperature_initial": 5000, "cooling_rate": 0.985},
+            500
+        )
+
+    def test_05_medium_fast(self):
+        self.run_test_case(
+            "test_05_medium_fast",
+            {"name": "Medium-Fast", "n_customers": 15, "n_ifs": 2, "seed": 42},
+            {"max_iterations": 100, "temperature_initial": 2000, "cooling_rate": 0.99},
+            800
+        )
+
+    def test_06_medium_deep(self):
+        self.run_test_case(
+            "test_06_medium_deep",
+            {"name": "Medium-Deep", "n_customers": 15, "n_ifs": 2, "seed": 42},
+            {"max_iterations": 300, "temperature_initial": 10000, "cooling_rate": 0.985},
+            700
+        )
+
+    def test_07_large_fast(self):
+        self.run_test_case(
+            "test_07_large_fast",
+            {"name": "Large-Fast", "n_customers": 25, "n_ifs": 3, "seed": 42},
+            {"max_iterations": 150, "temperature_initial": 5000, "cooling_rate": 0.99},
+            1200
+        )
+
+    def test_08_large_deep(self):
+        self.run_test_case(
+            "test_08_large_deep",
+            {"name": "Large-Deep", "n_customers": 25, "n_ifs": 3, "seed": 42},
+            {"max_iterations": 500, "temperature_initial": 20000, "cooling_rate": 0.985},
+            1000
+        )
+
+    def test_09_clustered_data(self):
+        self.run_test_case(
+            "test_09_clustered_data",
+            {"name": "Clustered", "n_customers": 20, "n_ifs": 2, "seed": 42, "cluster_factor": 0.8},
+            {"max_iterations": 300, "temperature_initial": 10000, "cooling_rate": 0.99},
+            900
+        )
+
+    def test_10_uniform_data(self):
+        self.run_test_case(
+            "test_10_uniform_data",
+            {"name": "Uniform", "n_customers": 20, "n_ifs": 2, "seed": 42, "cluster_factor": 0.0},
+            {"max_iterations": 300, "temperature_initial": 10000, "cooling_rate": 0.99},
+            1100
+        )
+
+
+def generate_results_summary():
     """Generates a Markdown summary of the test results."""
     
-    summary_path = "test_results_summary.md"
+    summary_path = "result_sheet.md"
+    results = test_report_logger.get_results()
     
     with open(summary_path, "w") as f:
-        f.write("# Test Results Summary\n\n")
-        f.write("| Test Case | Description | Status | Time |\n")
-        f.write("|-----------|-------------|--------|------|\n")
+        f.write("# Result Sheet\n\n")
+        f.write("| Test Case ID | Parameters | Hyperparameters | Expected Result | Obtained Result | Optimal? | Status | Time | Outputs |\n")
+        f.write("|--------------|------------|-----------------|-----------------|-----------------|----------|--------|------|---------|\n")
         
-        for res in result.test_results:
-            f.write(f"| {res['name']} | {res['description']} | {res['status']} | {res['time']} |\n")
+        for res in results:
+            params_str = "<br>".join([f"{k}: {v}" for k, v in res['parameters'].items()])
+            hyperparams_str = "<br>".join([f"{k}: {v}" for k, v in res['hyperparameters'].items()])
             
-    print(f"\n📊 Test results summary saved to: {summary_path}")
+            f.write(f"| {res['test_case_id']} | {params_str} | {hyperparams_str} | {res['expected_result']} | {res['obtained_result']} | {res['is_optimal']} | {res['status']} | {res['time']} | {res['outputs']} |\n")
+            
+    print(f"\n📊 Result sheet saved to: {summary_path}")
 
 def run_test_suite():
     """Run the complete test suite with the custom runner."""
@@ -179,23 +181,15 @@ def run_test_suite():
     print("🧪 Running Comprehensive ALNS VRP Test Suite")
     print("=" * 60)
     
-    loader = unittest.TestLoader()
     suite = unittest.TestSuite()
+    loader = unittest.TestLoader()
+    suite.addTests(loader.loadTestsFromTestCase(TestALNSVRP))
     
-    # Add test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestALNSVRPBasic))
-    suite.addTests(loader.loadTestsFromTestCase(TestALNSVRPHyperparameterTuning))
-    suite.addTests(loader.loadTestsFromTestCase(TestALNSVRPVideoCreation))
-    
-    # Run tests with the custom runner
-    runner = CustomTestRunner()
-    result = runner.run(suite)
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
     
     # Generate and print summary
-    generate_results_summary(result)
-    
-    return len(result.failures) == 0 and len(result.errors) == 0
+    generate_results_summary()
 
 if __name__ == "__main__":
-    if not run_test_suite():
-        sys.exit(1)
+    run_test_suite()

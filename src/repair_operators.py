@@ -38,6 +38,7 @@ class RepairOperator:
 
     def __init__(self, name: str):
         self.name = name
+        # Performance score is used for adaptive weight adjustment.
         self.performance_score = 0.0
         self.usage_count = 0
 
@@ -128,7 +129,7 @@ def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
     if not route.nodes:
         return False
 
-    # A single customer's demand cannot exceed vehicle capacity
+    # A single customer's demand cannot exceed vehicle capacity.
     for n in route.nodes:
         if n.type == "customer" and float(n.demand) > problem.vehicle_capacity:
             return False
@@ -137,7 +138,7 @@ def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
     current_load = 0.0
     i = 0
 
-    # Safety cap to avoid infinite loops in pathological cases
+    # Safety cap to avoid infinite loops in pathological cases.
     insertion_count = 0
     max_insertions = max(10, len(nodes) * 2)
     last_insert_pos = -1
@@ -146,7 +147,7 @@ def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
         node = nodes[i]
         if node.type == "customer":
             current_load += float(node.demand)
-            # If load is high, insert an IF visit before the current customer
+            # If load is high, insert an IF visit before the current customer.
             if current_load >= 0.8 * problem.vehicle_capacity:
                 if insertion_count >= max_insertions:
                     return False
@@ -168,7 +169,7 @@ def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
 
         i += 1
 
-    # Ensure route starts/ends with depot
+    # Ensure the route starts and ends with the depot.
     if nodes and nodes[0] != problem.depot:
         nodes.insert(0, problem.depot)
     if nodes and nodes[-1] != problem.depot:
@@ -193,7 +194,8 @@ def route_is_feasible(route: Route, problem: ProblemInstance) -> bool:
 class GreedyInsertion(RepairOperator):
     """
     Inserts unassigned customers one by one into the position that results
-    in the smallest increase in total cost (distance).
+    in the smallest increase in total cost (distance). This is a simple and
+    fast heuristic.
     """
 
     def __init__(self):
@@ -208,12 +210,13 @@ class GreedyInsertion(RepairOperator):
 
         unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
         unassigned = [c for c in problem.customers if c.id in unassigned_ids]
+        # Process customers with higher demand first.
         unassigned.sort(key=lambda c: float(c.demand), reverse=True)
 
         while unassigned:
             best = None  # Stores (cost_increase, customer, route_idx, position)
             for customer in list(unassigned):
-                # Try inserting into existing routes
+                # Try inserting into existing routes.
                 for ridx, route in enumerate(sol.routes):
                     for pos in range(1, len(route.nodes)):
                         route.nodes.insert(pos, customer)
@@ -230,7 +233,7 @@ class GreedyInsertion(RepairOperator):
                             route.nodes.pop(pos)
                             route.loads = recalc_loads(route)
 
-                # Try creating a new route for the customer
+                # Try creating a new route for the customer.
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 new_route.loads = recalc_loads(new_route)
@@ -240,15 +243,15 @@ class GreedyInsertion(RepairOperator):
                         best = (d_new, customer, None, None)
 
             if best is None:
-                break  # No feasible insertion found
+                break  # No feasible insertion found for any remaining customer.
 
             _, customer, ridx, pos = best
-            if ridx is None: # Create a new route
+            if ridx is None: # Create a new route.
                 nr = Route()
                 nr.nodes = [problem.depot, customer, problem.depot]
                 nr.loads = recalc_loads(nr)
                 sol.routes.append(nr)
-            else: # Insert into an existing route
+            else: # Insert into an existing route.
                 sol.routes[ridx].nodes.insert(pos, customer)
                 sol.routes[ridx].loads = recalc_loads(sol.routes[ridx])
 
@@ -268,7 +271,8 @@ class RegretInsertion(RepairOperator):
     """
     Inserts customers based on a "regret" value. The regret is the difference
     in cost between the best insertion position and the second-best (or k-th best).
-    This prioritizes customers that have fewer good insertion options.
+    This prioritizes customers that have fewer good insertion options, which can
+    prevent suboptimal decisions early on.
     """
 
     def __init__(self, k: int = 2):
@@ -290,7 +294,7 @@ class RegretInsertion(RepairOperator):
             candidate_info = []
             for customer in unassigned:
                 insertion_costs = []
-                # Find all possible insertion positions and their costs
+                # Find all possible insertion positions and their costs.
                 for ridx, route in enumerate(sol.routes):
                     for pos in range(1, len(route.nodes)):
                         route.nodes.insert(pos, customer)
@@ -307,7 +311,7 @@ class RegretInsertion(RepairOperator):
                             d_without = calculate_route_distance(route, problem)
                             insertion_costs.append((d_with - d_without, ridx, pos))
 
-                # Consider creating a new route
+                # Consider creating a new route.
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 new_route.loads = recalc_loads(new_route)
@@ -320,7 +324,7 @@ class RegretInsertion(RepairOperator):
                 if not insertion_costs:
                     continue
 
-                # Calculate regret value
+                # Calculate regret value.
                 k_considered = min(self.k, len(insertion_costs))
                 best_cost = insertion_costs[0][0]
                 regret = sum(
@@ -331,7 +335,7 @@ class RegretInsertion(RepairOperator):
             if not candidate_info:
                 break
 
-            # Choose the customer with the highest regret to insert next
+            # Choose the customer with the highest regret to insert next.
             candidate_info.sort(key=lambda x: x[0], reverse=True)
             _, chosen_customer, best_insertion = candidate_info[0]
             cost, ridx, pos = best_insertion
@@ -361,7 +365,8 @@ class IFAwareRepair(RepairOperator):
     """
     A greedy insertion operator that is aware of intermediate facilities (IFs).
     When it inserts a customer, it also checks if an IF visit is needed and
-    inserts one if necessary, ensuring the route remains feasible.
+    inserts one if necessary, ensuring the route remains feasible with respect
+    to capacity.
     """
 
     def __init__(self):
@@ -381,19 +386,19 @@ class IFAwareRepair(RepairOperator):
         while unassigned:
             best = None
             for customer in list(unassigned):
-                # Try inserting into existing routes
+                # Try inserting into existing routes.
                 for ridx, route in enumerate(sol.routes):
                     for pos in range(1, len(route.nodes)):
                         original_nodes = route.nodes.copy()
                         original_loads = route.loads.copy()
 
-                        # Create a temporary route for feasibility checking
+                        # Create a temporary route for feasibility checking.
                         tentative = Route()
                         tentative.nodes = original_nodes.copy()
                         tentative.nodes.insert(pos, customer)
                         tentative.loads = recalc_loads(tentative)
 
-                        # Enforce IF visits and check feasibility
+                        # Enforce IF visits and check feasibility.
                         ok = enforce_if_visits(tentative, problem)
                         if ok and route_is_feasible(tentative, problem):
                             d_with = calculate_route_distance(tentative, problem)
@@ -408,7 +413,7 @@ class IFAwareRepair(RepairOperator):
                         route.nodes = original_nodes
                         route.loads = original_loads
 
-                # Try creating a new route
+                # Try creating a new route.
                 new_route = Route()
                 new_route.nodes = [problem.depot, customer, problem.depot]
                 ok = enforce_if_visits(new_route, problem)
@@ -461,7 +466,7 @@ class SavingsInsertion(RepairOperator):
         unassigned_ids = set(getattr(sol, "unassigned_customers", set()))
         unassigned = [c for c in problem.customers if c.id in unassigned_ids]
 
-        # Create a new route for each unassigned customer
+        # Create a new route for each unassigned customer.
         for customer in unassigned:
             r = Route()
             r.nodes = [problem.depot, customer, problem.depot]
@@ -473,7 +478,7 @@ class SavingsInsertion(RepairOperator):
             ):
                 sol.unassigned_customers.remove(customer.id)
 
-        # Calculate savings for merging every pair of routes
+        # Calculate savings for merging every pair of routes.
         savings_list = []
         for i in range(len(sol.routes)):
             for j in range(i + 1, len(sol.routes)):
@@ -500,7 +505,7 @@ class SavingsInsertion(RepairOperator):
 
         savings_list.sort(key=lambda x: x[0], reverse=True)
 
-        # Iteratively merge routes with the highest savings
+        # Iteratively merge routes with the highest savings.
         for s, i, j in savings_list:
             if i >= len(sol.routes) or j >= len(sol.routes) or i == j:
                 continue
@@ -524,7 +529,11 @@ class SavingsInsertion(RepairOperator):
 
 
 class RepairOperatorManager:
-    """Manages the selection and adaptive weighting of repair operators."""
+    """
+    Manages the selection and adaptive weighting of repair operators. It uses
+    a roulette wheel selection mechanism based on the performance of each
+    operator to guide the search.
+    """
 
     def __init__(self):
         self.operators: List[RepairOperator] = [
@@ -533,10 +542,11 @@ class RepairOperatorManager:
             IFAwareRepair(),
             SavingsInsertion(),
         ]
+        # All operators start with an equal weight.
         self.weights: List[float] = [1.0 for _ in self.operators]
         self.iteration = 0
         self.learning_period = 50
-        self.reaction = 0.2 # How much the weights are adjusted based on performance
+        self.reaction = 0.2 # How much the weights are adjusted based on performance.
 
     def select(self) -> RepairOperator:
         """Selects a repair operator using roulette wheel selection based on weights."""

@@ -8,6 +8,25 @@
 
 ---
 
+## 📜 Table of Contents
+
+1.  [**Project Overview**](#-project-overview)
+2.  [**Theoretical Foundation**](#-theoretical-foundation)
+3.  [**Implementation Architecture**](#️-implementation-architecture)
+4.  [**Step-by-Step Implementation Guide**](#️-step-by-step-implementation-guide)
+5.  [**Author Contributions**](#-author-contributions)
+6.  [**Usage Guide**](#-usage-guide)
+7.  [**Performance and Benchmarks**](#-performance-and-benchmarks)
+8.  [**Testing and Validation**](#-testing-and-validation)
+9.  [**Final Deliverables**](#-final-deliverables)
+10. [**Project Structure**](#-project-structure)
+11. [**Advanced Configuration**](#️-advanced-configuration)
+12. [**Academic and Research Applications**](#-academic-and-research-applications)
+13. [**Support and Contributing**](#-support-and-contributing)
+14. [**License and Citation**](#-license-and-citation)
+
+---
+
 ## 🎯 **Project Overview**
 
 This project implements an advanced **Vehicle Routing Problem (VRP) with Intermediate Facilities** specifically designed for municipal waste collection optimization. The system uses **Adaptive Large Neighborhood Search (ALNS)** to find optimal waste collection routes that minimize total transportation costs while respecting vehicle capacity constraints and intermediate facility visits.
@@ -434,71 +453,10 @@ def analyze_route(self, route: Route, problem: ProblemInstance):
 
 This project was developed with a 50-50 contribution split between the two authors. The workload was distributed to ensure that both authors contributed equally to the core algorithmic components, user-facing features, and overall project quality.
 
----
-
-### **1. Chaitanya Shinde | 231070066**
-
-**Role: Core Algorithm and Data Structures (50% of total workload)**
-
-Chaitanya was responsible for designing and implementing the foundational logic of the VRP solver. This involved creating the data structures to represent the problem and solution, as well as developing the core metaheuristic engine.
-
-**Key Responsibilities & Modules:**
-
-- **`src/problem.py`**:
-  - Implemented the `ProblemInstance` class to define the VRP, including depots, customers, and intermediate facilities.
-  - Implemented the `Location` class to represent all nodes in the problem space.
-  - Developed methods for distance calculations and feasibility checks.
-
-- **`src/solution.py`**:
-  - Implemented the `Solution` and `Route` classes to represent a complete set of vehicle routes.
-  - Developed methods for calculating solution metrics (cost, distance) and ensuring the validity of routes.
-
-- **`src/alns.py`**:
-  - Implemented the main `ALNS` class, which orchestrates the entire optimization process.
-  - Developed the core loop for the Adaptive Large Neighborhood Search, including the simulated annealing acceptance criterion.
-  - Implemented the logic for adaptive weight adjustment for the operators.
-
-- **`src/destroy_operators.py`**:
-  - Implemented a suite of "destroy" operators (`RandomRemoval`, `WorstRemoval`, `ShawRemoval`, `RouteRemoval`) that deconstruct a solution to explore new search spaces.
-
-- **`src/repair_operators.py`**:
-  - Implemented a suite of "repair" operators (`GreedyInsertion`, `RegretInsertion`, `IFAwareRepair`) that rebuild a partial solution into a new, complete one.
-
-- **`src/data_generator.py`**:
-  - Developed the `DataGenerator` class to create synthetic, reproducible problem instances with varying characteristics (e.g., clustered vs. uniform distribution).
-
----
-
-### **2. Harsh Sharma | 231070064**
-
-**Role: UI, Visualization, and Testing (50% of total workload)**
-
-Harsh was responsible for all user-facing components, including the command-line interface, visualization tools, and video generation. He also developed the comprehensive testing framework to ensure the robustness and correctness of the entire application.
-
-**Key Responsibilities & Modules:**
-
-- **`main.py`**:
-  - Implemented the primary command-line interface (CLI) using `argparse`.
-  - Designed and implemented the different demonstration modes (`basic`, `comprehensive`, `benchmark`).
-  - Integrated all modules to create a cohesive and runnable application.
-
-- **`simple_video_creator.py`**:
-  - Developed the `SimpleVideoCreator` class to generate animated GIFs of the route optimization process and cost convergence using `matplotlib`.
-  - Implemented the logic for capturing and rendering each frame of the animation.
-
-- **`src/utils.py`**:
-  - Implemented the `RouteVisualizer` class for creating static plots of solutions and convergence graphs.
-  - Implemented the `PerformanceAnalyzer` class to calculate and report on a wide range of solution quality metrics.
-
-- **`tests/test_all.py`**:
-  - Developed a comprehensive test suite using Python's `unittest` framework.
-  - Wrote unit tests for all core components, including data structures, operators, and the ALNS engine.
-  - Wrote integration tests to verify the end-to-end functionality of the application.
-
-- **Documentation & Project Structure**:
-  - Created and maintained the detailed `README.md` file.
-  - Ensured a logical and clean project structure.
-  - Documented the usage of the CLI and other user-facing features.
+| Author | ID | Role | Key Responsibilities & Modules |
+| :--- | :--- | :--- | :--- |
+| **Chaitanya Shinde** | 231070066 | Core Algorithm and Application | `src/alns.py`, `src/problem.py`, `src/solution.py`, `src/destroy_operators.py`, `src/repair_operators.py`, `main.py`, `comprehensive_test_suite.py`, `test_runner.py` |
+| **Harsh Sharma** | 231070064 | Data, Visualization, and Utilities | `src/data_generator.py`, `src/utils.py`, `simple_video_creator.py`, `optimization_video_creator.py`, `alns_video_integration.py`, `setup_and_demo.py`, `verify_project.py`, `src/benchmarking.py`, `src/enhanced_construction.py`, `src/enhanced_validator.py`, `tests/test_all.py`, `test_alns_functionality.py`, `test_video_integration.py` |
 
 ---
 
@@ -530,22 +488,6 @@ python main.py --live --video
 python main.py --demo benchmark --video
 ```
 
-**Advanced Options:**
-```bash
-# Full configuration
-python main.py \
-    --demo comprehensive \
-    --video \
-    --live \
-    --iterations 1000 \
-    --save-plots \
-    --save-results \
-    --verbose
-
-# Problem instance from file
-python main.py --instance custom_problem.json --video --iterations 200
-```
-
 ### **Command Line Interface**
 
 | Option | Description | Example |
@@ -559,56 +501,6 @@ python main.py --instance custom_problem.json --video --iterations 200
 | `--instance FILE` | Load problem from JSON file | `--instance problem.json` |
 | `--verbose` | Enable detailed output | `--verbose` |
 | `--help` | Show help message | `--help` |
-
-### **Programmatic Usage**
-
-**Basic API Usage:**
-```python
-from src.data_generator import DataGenerator
-from src.alns import ALNS
-from src.utils import PerformanceAnalyzer
-
-# 1. Create problem
-problem = DataGenerator.generate_instance(
-    name="My Municipal Area",
-    n_customers=20,
-    n_ifs=2,
-    vehicle_capacity=25,
-    seed=42
-)
-
-# 2. Solve with ALNS
-solver = ALNS(problem)
-solution = solver.run(max_iterations=500)
-
-# 3. Analyze results
-analyzer = PerformanceAnalyzer(problem)
-analysis = analyzer.analyze_solution(solution)
-
-print(f"Total Cost: {analysis['total_cost']:.2f}")
-print(f"Vehicles Used: {analysis['num_vehicles']}")
-print(f"Capacity Utilization: {analysis['efficiency_metrics']['capacity_utilization']:.1%}")
-```
-
-**Video Creation API:**
-```python
-from simple_video_creator import SimpleVideoCreator
-from main import OptimizationVideoTracker
-
-# 1. Create video tracker
-tracker = OptimizationVideoTracker(problem)
-
-# 2. Run optimization with tracking
-def track_callback(iteration, solution):
-    if iteration % 10 == 0:
-        tracker.track_state(iteration, solution, solution.total_cost)
-
-solver.iteration_callback = track_callback
-solution = solver.run(max_iterations=300)
-
-# 3. Create videos
-video_path = tracker.create_video("my_optimization.gif")
-```
 
 ---
 
@@ -625,84 +517,17 @@ video_path = tracker.create_video("my_optimization.gif")
 | **Integration Tests** | 1 | 100% | Full Workflow Validation |
 | **Total** | **12** | **100%** | **Complete System Testing** |
 
-### **Performance Benchmarks**
-
-**Small Problems (≤10 customers):**
-- **Solution Time**: < 1 second
-- **Memory Usage**: < 50 MB
-- **Video Creation**: < 5 seconds
-- **Quality**: > 95% of known optimal
-
-**Medium Problems (11-25 customers):**
-- **Solution Time**: 1-10 seconds
-- **Memory Usage**: 50-200 MB
-- **Video Creation**: 5-15 seconds
-- **Quality**: > 90% of known optimal
-
-**Large Problems (26-50 customers):**
-- **Solution Time**: 10-60 seconds
-- **Memory Usage**: 200-500 MB
-- **Video Creation**: 15-30 seconds
-- **Quality**: > 85% of known optimal
-
-### **Algorithm Performance**
-
-**Convergence Characteristics:**
-- **Rapid Initial Improvement**: 60-70% of final improvement in first 20% of iterations
-- **Adaptive Behavior**: Operator selection adapts to problem characteristics
-- **Exploration vs Exploitation**: Balance maintained through temperature scheduling
-- **Robust Performance**: Consistent results across different random seeds
-
-**Scalability Analysis:**
-- **Computational Complexity**: O(n² log n) for distance matrix, O(n×k×iterations) for ALNS
-- **Memory Scaling**: O(n²) for distance matrix storage
-- **Parallelization Potential**: Individual route evaluations can be parallelized
-
 ---
 
-## 🧪 **Testing and Validation**
+##  deliverables-icon **Final Deliverables**
 
-### **Testing Framework**
+All final project deliverables are located in the `submissions/` directory. This includes:
 
-**Comprehensive Test Suite:** `comprehensive_test_suite.py`
-
-**Test Categories:**
-1. **Unit Tests** - Individual component validation
-2. **Integration Tests** - End-to-end workflow testing
-3. **Performance Tests** - Scalability and efficiency validation
-4. **Video Creation Tests** - Visualization system validation
-5. **Edge Case Tests** - Boundary condition handling
-
-**Test Execution:**
-```bash
-# Run complete test suite
-python comprehensive_test_suite.py
-
-# Run specific test categories
-python -m unittest test_alns_basic
-python -m unittest test_video_creation
-python -m unittest test_performance
-```
-
-**Test Results:**
-- ✅ **12 Tests Total** - All passing
-- ✅ **100% Success Rate** - No failures or errors
-- ✅ **Complete Coverage** - All major components tested
-- ✅ **Cross-Platform** - Validated on Linux/Windows/macOS
-
-### **Validation Methodology**
-
-**Solution Quality Validation:**
-- **Constraint Satisfaction** - All capacity and routing constraints verified
-- **Mathematical Consistency** - Distance calculations validated against known benchmarks
-- **Feasibility Checking** - Problem feasibility correctly identified
-- **Optimality Gap** - Results compared against known optimal solutions
-
-**Algorithm Validation:**
-- **Convergence Testing** - Algorithm converges to stable solutions
-- **Reproducibility** - Same input produces same results with fixed seed
-- **Parameter Sensitivity** - Robust performance across parameter ranges
-- **Edge Case Handling** - Correct handling of infeasible or degenerate cases
+- **`project_report.md`**: The main project report.
+- **`dataset_documentation.md`**: Documentation for the data generation module.
+- **`result_sheet.md`**: The detailed results of the test suite, including hyperparameter tuning and links to video outputs.
+- **`hyperparameter_*_output.gif`**: Animated GIF outputs from the hyperparameter tuning tests.
+- **Source Code**: The complete and documented source code in the `src/` directory and other Python files.
 
 ---
 
@@ -766,163 +591,6 @@ python -m unittest test_performance
 
 ---
 
-## 🔧 **Advanced Configuration**
-
-### **ALNS Parameters**
-
-**Core Algorithm Settings:**
-```python
-solver = ALNS(problem)
-
-# Iteration Control
-solver.max_iterations = 1000        # Total optimization iterations
-solver.no_improvement_limit = 100   # Stop if no improvement
-
-# Temperature Schedule (Simulated Annealing)
-solver.temperature_initial = 10.0   # Starting acceptance temperature
-solver.temperature_min = 0.01       # Minimum temperature
-solver.cooling_rate = 0.95          # Temperature reduction factor
-
-# Operator Configuration
-solver.adaptation_rate = 0.1        # Weight adaptation speed
-solver.operator_selection_smoothing = 0.8  # Selection noise reduction
-
-# Removal/Insertion Parameters
-solver.min_removal_count = 1        # Minimum customers to remove
-solver.max_removal_count = 5        # Maximum customers to remove
-solver.regret_k = 2                 # Regret insertion parameter
-```
-
-### **Problem-Specific Settings**
-
-**Vehicle Configuration:**
-```python
-problem.vehicle_capacity = 25       # Maximum waste per vehicle
-problem.number_of_vehicles = 3      # Available vehicle fleet
-problem.disposal_time = 2.0         # Time spent at intermediate facilities
-```
-
-**Geographic Configuration:**
-```python
-problem = DataGenerator.generate_instance(
-    area_size=100,                  # Municipal area dimensions
-    customer_distribution='clustered', # Geographic distribution pattern
-    facility_spacing='optimal',     # Intermediate facility placement
-    demand_correlation=0.3          # Spatial correlation in waste generation
-)
-```
-
-### **Video Creation Settings**
-
-**Animation Configuration:**
-```python
-creator = SimpleVideoCreator()
-
-# Frame Rate and Duration
-creator.fps = 1                     # Frames per second (1 = slow, detailed)
-creator.frame_interval = 1000       # Milliseconds between frames
-
-# Visual Quality
-creator.dpi = 150                   # Output resolution
-creator.figure_size = (12, 8)       # Plot dimensions
-
-# Scale and Bounds
-creator.auto_scale = True           # Dynamic scale calculation
-creator.padding_factor = 0.1        # Border padding around data
-
-# Output Format
-creator.prefer_mp4 = True           # Prefer MP4 over GIF if available
-creator.create_individual_frames = False  # Don't save frame PNGs
-```
-
----
-
-## 🎓 **Academic and Research Applications**
-
-### **Publication-Ready Results**
-
-**Research Papers:**
-- **Algorithm Development**: Use video creation to demonstrate optimization process
-- **Comparative Studies**: Benchmark against other VRP variants
-- **Performance Analysis**: Use comprehensive metrics for evaluation
-- **Scalability Studies**: Test on various problem sizes
-
-**Conference Presentations:**
-- **Dynamic Visualization**: Real-time optimization progress
-- **Route Evolution**: Show algorithm learning and improvement
-- **Cost Convergence**: Demonstrate algorithm effectiveness
-- **Interactive Demos**: Live optimization with video recording
-
-**Technical Reports:**
-- **Municipal Planning**: Route optimization for real cities
-- **Cost-Benefit Analysis**: Quantify optimization savings
-- **Implementation Guides**: Step-by-step deployment instructions
-- **Performance Reports**: Detailed efficiency analysis
-
-### **Research Extensions**
-
-**Potential Enhancements:**
-- **Multi-Objective Optimization**: Balance cost, time, and environmental impact
-- **Real-Time Routing**: Dynamic route adjustment with traffic data
-- **Stochastic Demands**: Handle uncertain waste generation patterns
-- **Electric Vehicles**: Consider charging constraints and battery life
-
-**Academic Extensions:**
-- **Hybrid Algorithms**: Combine ALNS with other metaheuristics
-- **Machine Learning**: Learn operator selection from historical performance
-- **Parallel Computing**: Distribute computation across multiple processors
-- **Robust Optimization**: Handle uncertainty in problem parameters
-
----
-
-## 📞 **Support and Contributing**
-
-### **Getting Help**
-
-**Common Issues:**
-1. **Installation Problems**: Check Python version (3.8+) and dependencies
-2. **Video Creation Fails**: Install matplotlib and Pillow packages
-3. **Performance Issues**: Reduce problem size or iteration count
-4. **Memory Errors**: Use smaller instances or increase system memory
-
-**Troubleshooting Commands:**
-```bash
-# Check installation
-python main.py --help
-
-# Test basic functionality
-python comprehensive_test_suite.py
-
-# Debug with verbose output
-python main.py --demo basic --verbose
-
-# Validate problem instance
-python main.py --instance your_problem.json --verbose
-```
-
-### **Contributing Guidelines**
-
-**Code Contributions:**
-1. Fork the repository and create feature branch
-2. Implement changes with comprehensive tests
-3. Ensure all tests pass (100% success rate)
-4. Update documentation for new features
-5. Submit pull request with clear description
-
-**Documentation Contributions:**
-1. Improve README clarity and completeness
-2. Add more usage examples and tutorials
-3. Enhance troubleshooting guides
-4. Contribute to academic documentation
-
-**Research Contributions:**
-1. Benchmark against standard VRP datasets
-2. Compare with other optimization algorithms
-3. Extend to additional problem variants
-4. Publish results with proper attribution
-
----
-
 ## 📜 **License and Citation**
 
 **Academic License:**
@@ -935,33 +603,8 @@ Chaitanya Shinde - 231070066 | Harsh Sharma - 231070064 | TYBTECH CE (2025)
 Vehicle Routing Problem with Intermediate Facilities
 ```
 
-**Academic Use:**
-- Free for educational and research purposes
-- Commercial use requires permission
-- Attribution required for publications
-- Modified versions must maintain documentation
-
 ---
 
-## 🎯 **Conclusion**
-
-This **Municipal Waste Collection Route Optimization** project provides a comprehensive solution for real-world waste collection planning using advanced optimization techniques. The integration of **Adaptive Large Neighborhood Search** with **interactive video creation** offers unique insights into the optimization process while delivering high-quality solutions for municipal-scale problems.
-
-### **Key Achievements:**
-- ✅ **Complete VRP-IF Implementation** - Handles intermediate facilities
-- ✅ **Advanced ALNS Algorithm** - Adaptive and efficient optimization
-- ✅ **Interactive Video Creation** - Visualize optimization process
-- ✅ **Comprehensive Testing** - 100% test coverage and validation
-- ✅ **Academic-Ready Documentation** - Complete implementation guide
-- ✅ **Scalable Performance** - Tested up to 50-customer problems
-
-### **Ready for Deployment:**
-The system is production-ready for municipal planning applications, research projects, and academic demonstrations. The comprehensive test suite, documentation, and video creation capabilities make it ideal for both practical use and educational purposes.
-
-**Start optimizing municipal waste collection routes today!** 🗂️🚛
-
----
-
-*Last Updated: November 14, 2025*
-*Version: 2.1 - Enhanced with Video Creation*
+*Last Updated: November 21, 2025*
+*Version: 3.0 - Final Submission*
 *© 2025 Municipal Waste Collection Route Optimization Project. All rights reserved . Harsh Sharma & Chaitanya Shinde*

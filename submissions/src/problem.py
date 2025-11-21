@@ -62,19 +62,20 @@ class ProblemInstance:
         self.number_of_vehicles: float = float("inf")  # Available vehicles
         self.disposal_time: float = 0.0  # Time needed at intermediate facilities
 
-        # distance_matrix will be created by calculate_distance_matrix()
-        # It is set to None until the method is called.
-        # When present it will be a numpy.ndarray if numpy is available, otherwise a nested list.
+        # The distance matrix is pre-computed to speed up the solver.
+        # It will be a numpy.ndarray if numpy is available, otherwise a nested list.
         self.distance_matrix = None
 
     def calculate_distance(self, loc1: Location, loc2: Location) -> float:
         """Calculate Euclidean distance between two locations."""
+        # This is the most common distance metric for VRP.
         return ((loc1.x - loc2.x) ** 2 + (loc1.y - loc2.y) ** 2) ** 0.5
 
     def calculate_travel_time(
         self, loc1: Location, loc2: Location, speed: float = 1.0
     ) -> float:
         """Calculate travel time between locations given a constant speed."""
+        # Assumes a constant speed for simplicity.
         return self.calculate_distance(loc1, loc2) / speed
 
     def calculate_distance_matrix(self):
@@ -83,7 +84,7 @@ class ProblemInstance:
         This avoids recalculating distances and speeds up the optimization process.
         The ordering is [depot] + customers + intermediate_facilities.
         """
-        # Build ordered list of nodes
+        # Build an ordered list of all nodes in the problem.
         nodes = []
         if self.depot is not None:
             nodes.append(self.depot)
@@ -95,7 +96,7 @@ class ProblemInstance:
             self.distance_matrix = None
             return self.distance_matrix
 
-        # Use numpy for efficient matrix operations if available
+        # Use numpy for efficient matrix operations if available.
         if np is not None:
             mat = np.zeros((n, n), dtype=float)
             for i in range(n):
@@ -103,7 +104,7 @@ class ProblemInstance:
                     mat[i, j] = self.calculate_distance(nodes[i], nodes[j])
             self.distance_matrix = mat
         else:
-            # Fallback to native Python lists if numpy is not installed
+            # Fallback to native Python lists if numpy is not installed.
             mat = [[0.0 for _ in range(n)] for _ in range(n)]
             for i in range(n):
                 for j in range(n):
@@ -119,11 +120,11 @@ class ProblemInstance:
     def get_min_vehicles_needed(self) -> float:
         """
         Calculates the theoretical minimum number of vehicles required to serve
-        the total demand, based on vehicle capacity.
+        the total demand, based on vehicle capacity. This is a lower bound.
         """
         if self.vehicle_capacity <= 0:
             return float("inf")
-        # Use ceiling division to determine how many vehicles are needed
+        # Use ceiling division to determine how many vehicles are needed.
         total = self.get_total_demand()
         per_vehicle = float(self.vehicle_capacity)
         needed = (
@@ -142,7 +143,7 @@ class ProblemInstance:
         )
 
     def is_feasible(self) -> Tuple[bool, str]:
-        """Checks for basic feasibility of the problem instance."""
+        """Checks for basic feasibility of the problem instance itself."""
         if not self.depot:
             return False, "No depot defined"
         if not self.customers:
@@ -151,7 +152,7 @@ class ProblemInstance:
             return False, "No intermediate facilities defined"
         if self.vehicle_capacity <= 0:
             return False, "Invalid vehicle capacity"
-        # A customer's demand cannot be greater than the vehicle's capacity
+        # A customer's demand cannot be greater than the vehicle's capacity.
         if (
             self.customers
             and max(c.demand for c in self.customers) > self.vehicle_capacity
@@ -174,7 +175,11 @@ class ProblemInstance:
                 if current_load > self.vehicle_capacity:
                     return False, f"Capacity exceeded at customer {node.id}"
             elif node.type == "if":
-                # Load is reset to zero at an intermediate facility
+                # Load is reset to zero at an intermediate facility.
                 current_load = 0
 
         return True, "Route is feasible"
+
+    def get_customer_data(self) -> dict:
+        """Returns a dictionary of customer locations and their demands for visualization."""
+        return {(c.x, c.y): c.demand for c in self.customers}

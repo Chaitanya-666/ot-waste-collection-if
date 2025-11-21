@@ -1,4 +1,8 @@
-# test_report_logger.py
+# Author: Chaitanya Shinde (231070066)
+#
+# This file defines the TestReportLogger class, which is used by the
+# comprehensive test suite to collect and log detailed results from each
+# test case.
 
 class TestReportLogger:
     """A simple logger to collect detailed test results."""

@@ -42,31 +42,31 @@ class RouteVisualizer:
     ):
         self.problem = problem
         self.fig = plt.figure(figsize=figsize)
-        # Create a grid for two plots: one for the routes, one for convergence
+        # Create a grid for two plots: one for the routes, one for convergence.
         self.ax = self.fig.add_subplot(2, 1, 1)
         self.conv_ax = self.fig.add_subplot(2, 1, 2)
         self.colors = plt.cm.get_cmap('tab10').colors
         self._live = bool(live)
         if self._live:
-            plt.ion() # Turn on interactive mode for live plotting
+            plt.ion() # Turn on interactive mode for live plotting.
 
     def _draw_base_map(self, title: str = "Waste Collection Routes"):
         """Draws the static elements of the map (depot, customers, IFs)."""
         self.ax.clear()
         self.ax.set_title(title, fontsize=14, fontweight="bold")
 
-        # Plot the depot
+        # Plot the depot.
         depot = self.problem.depot
         if depot is not None:
             self.ax.plot(depot.x, depot.y, "ks", markersize=12, label="Depot", zorder=5)
             self.ax.annotate("Depot", (depot.x, depot.y), xytext=(5, 5), textcoords="offset points")
 
-        # Plot intermediate facilities
+        # Plot intermediate facilities.
         for i, if_node in enumerate(self.problem.intermediate_facilities):
             self.ax.plot(if_node.x, if_node.y, "D", color="orange", markersize=10, label="IF" if i == 0 else "", zorder=4)
             self.ax.annotate("IF", (if_node.x, if_node.y), xytext=(5, 5), textcoords="offset points")
 
-        # Plot all customer locations
+        # Plot all customer locations.
         for customer in self.problem.customers:
             self.ax.plot(customer.x, customer.y, "o", color="lightblue", markersize=6, zorder=3)
             self.ax.annotate(f"C{customer.id}", (customer.x, customer.y), xytext=(3, 3), textcoords="offset points")
@@ -79,10 +79,10 @@ class RouteVisualizer:
         """Plots a complete solution, drawing all vehicle routes."""
         self._draw_base_map(title)
 
-        # Plot each route with a different color
+        # Plot each route with a different color.
         for i, route in enumerate(solution.routes):
             if not any(n.type == "customer" for n in route.nodes):
-                continue # Skip empty routes
+                continue # Skip empty routes.
 
             color = self.colors[i % len(self.colors)]
             route_x = [node.x for node in route.nodes]
@@ -119,11 +119,14 @@ class RouteVisualizer:
         convergence_history: Optional[List[float]] = None,
         pause: float = 0.01,
     ):
-        """Updates the live plot with a new solution and convergence history."""
+        """
+        Updates the live plot with a new solution and convergence history.
+        This is intended to be called from within the ALNS loop.
+        """
         try:
             self._draw_base_map("Live - Waste Collection Routes")
 
-            # Redraw all routes for the current solution
+            # Redraw all routes for the current solution.
             for i, route in enumerate(solution.routes):
                 if not route.nodes: continue
                 color = self.colors[i % len(self.colors)]
@@ -131,7 +134,7 @@ class RouteVisualizer:
                 route_y = [node.y for node in route.nodes]
                 self.ax.plot(route_x, route_y, "-", color=color, linewidth=1.5, alpha=0.9)
 
-            # Update the convergence plot
+            # Update the convergence plot.
             if convergence_history is not None:
                 self.conv_ax.clear()
                 self.conv_ax.plot(convergence_history, "b-", linewidth=1.0)
@@ -143,7 +146,7 @@ class RouteVisualizer:
                 self.fig.canvas.draw()
                 self.fig.canvas.flush_events()
         except Exception:
-            # Fail silently to prevent visualization errors from crashing the solver
+            # Fail silently to prevent visualization errors from crashing the solver.
             pass
 
     def stop_live(self):
@@ -156,7 +159,8 @@ class RouteVisualizer:
 class PerformanceAnalyzer:
     """
     Analyzes a given solution to calculate various performance and
-    efficiency metrics.
+    efficiency metrics, providing a quantitative assessment of the
+    solution's quality.
     """
 
     def __init__(self, problem: ProblemInstance):
@@ -164,7 +168,8 @@ class PerformanceAnalyzer:
 
     def analyze_solution(self, solution: Solution) -> Dict:
         """
-        Performs a comprehensive analysis of the solution, calculating key metrics.
+        Performs a comprehensive analysis of the solution, calculating key metrics
+        such as cost, vehicle usage, and efficiency.
         """
         analysis = {
             "total_cost": solution.total_cost,
@@ -177,18 +182,18 @@ class PerformanceAnalyzer:
             "efficiency_metrics": {},
         }
 
-        # Only consider routes that serve at least one customer
+        # Only consider routes that serve at least one customer.
         served_routes = [r for r in solution.routes if any(n.type == "customer" for n in r.nodes)]
         analysis["num_vehicles"] = len(served_routes)
 
-        # Calculate total demand served by the solution
+        # Calculate total demand served by the solution.
         served_customer_ids = {n.id for r in served_routes for n in r.nodes if n.type == "customer"}
         total_demand = sum(c.demand for c in self.problem.customers if c.id in served_customer_ids)
         
-        # Calculate total capacity based on the number of vehicles used
+        # Calculate total capacity based on the number of vehicles used.
         total_capacity = self.problem.vehicle_capacity * len(served_routes)
 
-        # Analyze each individual route
+        # Analyze each individual route.
         for idx, route in enumerate(served_routes):
             route_analysis = {
                 "vehicle_id": idx + 1,
@@ -202,9 +207,11 @@ class PerformanceAnalyzer:
             analysis["route_details"].append(route_analysis)
             analysis["if_visits"] += route_analysis["if_visits"]
 
-        # Calculate overall efficiency metrics
+        # Calculate overall efficiency metrics.
         analysis["efficiency_metrics"] = {
+            # Demand served per unit of distance traveled.
             "distance_efficiency": total_demand / solution.total_distance if solution.total_distance > 0 else 0,
+            # Percentage of total vehicle capacity that is used.
             "capacity_utilization": total_demand / total_capacity if total_capacity > 0 else 0,
         }
 

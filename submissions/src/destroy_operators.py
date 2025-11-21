@@ -20,6 +20,7 @@ class DestroyOperator:
 
     def __init__(self, name: str):
         self.name = name
+        # Performance score is used for adaptive weight adjustment.
         self.performance_score = 0.0
         self.usage_count = 0
 
@@ -42,7 +43,8 @@ class DestroyOperator:
 class RandomRemoval(DestroyOperator):
     """
     Removes a specified number of customers from the solution at random.
-    This is the simplest destroy operator and helps to diversify the search.
+    This is the simplest destroy operator and helps to diversify the search by
+    introducing random changes to the solution.
     """
 
     def __init__(self):
@@ -52,7 +54,7 @@ class RandomRemoval(DestroyOperator):
         """Removes `removal_count` customers from the solution randomly."""
         partial_solution = solution.copy()
 
-        # Get a list of all customers currently in routes
+        # Get a list of all customers currently in routes.
         all_customers = []
         for route in partial_solution.routes:
             for node in route.nodes:
@@ -60,19 +62,19 @@ class RandomRemoval(DestroyOperator):
                     all_customers.append((route, node))
 
         if len(all_customers) <= removal_count:
-            # If requested removal count is too high, remove all customers
+            # If the requested removal count is too high, remove all customers.
             removed_customers = []
             for route, customer in all_customers:
                 removed_customers.append(customer)
                 route.nodes.remove(customer)
-            # Mark removed customers as unassigned
+            # Mark removed customers as unassigned.
             if not hasattr(partial_solution, "unassigned_customers"):
                 partial_solution.unassigned_customers = set()
             for cust in removed_customers:
                 partial_solution.unassigned_customers.add(cust.id)
             return self._clean_solution(partial_solution)
 
-        # Randomly select customers to remove
+        # Randomly select customers to remove.
         customers_to_remove = random.sample(
             all_customers, min(removal_count, len(all_customers))
         )
@@ -82,7 +84,7 @@ class RandomRemoval(DestroyOperator):
             removed_customers.append(customer)
             route.nodes.remove(customer)
 
-        # Add the removed customers' IDs to the unassigned set
+        # Add the removed customers' IDs to the unassigned set.
         if not hasattr(partial_solution, "unassigned_customers"):
             partial_solution.unassigned_customers = set()
         for cust in removed_customers:
@@ -94,6 +96,7 @@ class RandomRemoval(DestroyOperator):
         """Cleans up the solution by recalculating metrics and removing empty routes."""
         for route in solution.routes:
             route.loads = self._recalculate_loads(route)
+        # A route is considered empty if it only contains the depot.
         solution.routes = [route for route in solution.routes if len(route.nodes) > 1]
         return solution
 
@@ -101,7 +104,7 @@ class RandomRemoval(DestroyOperator):
         """Recalculates the cumulative load for a given route."""
         loads: List[float] = [0.0]
         current_load: float = 0.0
-        for node in route.nodes[1:]:  # Skip depot
+        for node in route.nodes[1:]:  # Skip initial depot
             if getattr(node, "type", None) == "customer":
                 current_load += float(getattr(node, "demand", 0.0))
             loads.append(current_load)
@@ -112,7 +115,8 @@ class WorstRemoval(DestroyOperator):
     """
     Removes customers that are the most expensive to serve. The cost is
     calculated as the savings in distance if the customer were removed.
-    This operator focuses on removing "bad" parts of the solution.
+    This operator focuses on removing "bad" parts of the solution, with the
+    hope that the repair operator can find a better placement.
     """
 
     def __init__(self):
@@ -122,7 +126,7 @@ class WorstRemoval(DestroyOperator):
         """Removes `removal_count` customers with the highest marginal cost."""
         partial_solution = solution.copy()
 
-        # Calculate the marginal cost for each customer
+        # Calculate the marginal cost for each customer in the solution.
         customer_costs = []
         for route_idx, route in enumerate(partial_solution.routes):
             for node_idx, node in enumerate(route.nodes):
@@ -133,7 +137,7 @@ class WorstRemoval(DestroyOperator):
                     customer_costs.append((route, node_idx, marginal_cost))
 
         if len(customer_costs) <= removal_count:
-            # If requested count is too high, remove all
+            # If requested count is too high, remove all customers.
             removed_customers = []
             for route, node_idx, _ in customer_costs:
                 if 0 <= node_idx < len(route.nodes):
@@ -145,7 +149,7 @@ class WorstRemoval(DestroyOperator):
                 partial_solution.unassigned_customers.add(cust.id)
             return self._clean_solution(partial_solution)
 
-        # Sort customers by their removal cost in descending order
+        # Sort customers by their removal cost in descending order.
         customer_costs.sort(key=lambda x: x[2], reverse=True)
 
         removed_customers = []
@@ -168,16 +172,16 @@ class WorstRemoval(DestroyOperator):
         if node_idx <= 0 or node_idx >= len(route.nodes) - 1:
             return 0.0
 
-        # Cost of going from previous node to customer, and customer to next node
+        # Cost of going from previous node to customer, and customer to next node.
         from_node = route.nodes[node_idx - 1]
         customer = route.nodes[node_idx]
         to_node = route.nodes[node_idx + 1]
         original_cost = solution.problem.calculate_distance(from_node, customer) + solution.problem.calculate_distance(customer, to_node)
 
-        # Cost of going directly from previous node to next node
+        # Cost of going directly from previous node to next node.
         new_cost = solution.problem.calculate_distance(from_node, to_node)
 
-        # The marginal cost is the savings achieved by removing the customer
+        # The marginal cost is the savings achieved by removing the customer.
         return original_cost - new_cost
 
     def _clean_solution(self, solution: Solution) -> Solution:
@@ -201,7 +205,8 @@ class WorstRemoval(DestroyOperator):
 class ShawRemoval(DestroyOperator):
     """
     Removes customers that are "similar" to each other. Similarity is based on
-    geographic proximity and demand. This helps to destroy and rebuild entire regions.
+    a combination of geographic proximity, demand, and service time. This helps
+    to destroy and rebuild entire regions of the solution.
     """
 
     def __init__(self):
@@ -218,7 +223,7 @@ class ShawRemoval(DestroyOperator):
                     all_customers.append((route, node_idx, node))
 
         if len(all_customers) <= removal_count:
-            # Remove all if not enough customers
+            # Remove all if not enough customers.
             removed_customers = []
             for route, node_idx, _ in all_customers:
                 if 0 <= node_idx < len(route.nodes):
@@ -230,10 +235,10 @@ class ShawRemoval(DestroyOperator):
                 partial_solution.unassigned_customers.add(cust.id)
             return self._clean_solution(partial_solution)
 
-        # Select a random customer as a "seed"
+        # Select a random customer as a "seed" to find similar customers.
         seed_route, seed_idx, seed_customer = random.choice(all_customers)
 
-        # Calculate similarity of all other customers to the seed
+        # Calculate similarity of all other customers to the seed.
         similarities = []
         for route_idx, route in enumerate(partial_solution.routes):
             for node_idx, node in enumerate(route.nodes):
@@ -245,7 +250,7 @@ class ShawRemoval(DestroyOperator):
                     )
                     similarities.append((route, node_idx, similarity))
 
-        # Sort by similarity and remove the most similar customers
+        # Sort by similarity and remove the most similar customers.
         similarities.sort(key=lambda x: x[2], reverse=True)
 
         removed_customers = []
@@ -269,9 +274,10 @@ class ShawRemoval(DestroyOperator):
         self, customer1: Location, customer2: Location, problem: ProblemInstance
     ) -> float:
         """Calculates a similarity score between two customers."""
-        # Similarity is higher for customers that are closer and have similar demand
+        # Similarity is higher for customers that are closer and have similar demand.
         distance = problem.calculate_distance(customer1, customer2)
         demand_diff = abs(customer1.demand - customer2.demand)
+        # The formula can be tuned to give more weight to distance or demand.
         similarity = 1.0 / (1.0 + distance + demand_diff)
         return similarity
 
@@ -296,7 +302,8 @@ class ShawRemoval(DestroyOperator):
 class RouteRemoval(DestroyOperator):
     """
     Removes one or more entire routes from the solution. This is a large-scale
-    operator that can lead to significant changes in the solution structure.
+    operator that can lead to significant changes in the solution structure,
+    allowing the search to escape local optima.
     """
 
     def __init__(self):
@@ -307,7 +314,7 @@ class RouteRemoval(DestroyOperator):
         partial_solution = solution.copy()
 
         if len(partial_solution.routes) <= removal_count:
-            # If requested count is too high, remove all routes
+            # If requested count is too high, remove all routes.
             removed_customers = []
             for r in partial_solution.routes:
                 for n in r.nodes:
@@ -320,7 +327,7 @@ class RouteRemoval(DestroyOperator):
                 partial_solution.unassigned_customers.add(cust.id)
             return partial_solution
 
-        # Select random routes to remove
+        # Select random routes to remove.
         routes_to_remove = random.sample(
             partial_solution.routes, min(removal_count, len(partial_solution.routes))
         )
@@ -343,7 +350,8 @@ class RouteRemoval(DestroyOperator):
 class RelatedRemoval(DestroyOperator):
     """
     Removes customers that are geographically clustered together. This is similar
-    to Shaw removal but focuses only on spatial proximity.
+    to Shaw removal but focuses only on spatial proximity, making it a more
+    geographically-focused destroy operator.
     """
 
     def __init__(self):
@@ -360,7 +368,7 @@ class RelatedRemoval(DestroyOperator):
                     all_customers.append((route, node_idx, node))
 
         if len(all_customers) <= removal_count:
-            # Remove all if not enough customers
+            # Remove all if not enough customers.
             removed_customers = []
             for route, node_idx, _ in all_customers:
                 if 0 <= node_idx < len(route.nodes):
@@ -372,10 +380,10 @@ class RelatedRemoval(DestroyOperator):
                 partial_solution.unassigned_customers.add(cust.id)
             return self._clean_solution(partial_solution)
 
-        # Find clusters of related customers
+        # Find clusters of related customers based on distance.
         clusters = self._find_customer_clusters(all_customers, solution.problem)
 
-        # Select largest cluster and remove customers from it
+        # Select the largest cluster and remove customers from it.
         if clusters:
             largest_cluster = max(clusters, key=len)
             customers_to_remove = largest_cluster[:removal_count]
@@ -404,11 +412,11 @@ class RelatedRemoval(DestroyOperator):
             if i in visited:
                 continue
 
-            # Start a new cluster with the current customer
+            # Start a new cluster with the current customer.
             cluster = [(route1, idx1, customer1)]
             visited.add(i)
 
-            # Find other customers related to the current one
+            # Find other customers related to the current one.
             for j, (route2, idx2, customer2) in enumerate(customers):
                 if j in visited:
                     continue
@@ -416,8 +424,8 @@ class RelatedRemoval(DestroyOperator):
                 distance = problem.calculate_distance(customer1, customer2)
                 demand_diff = abs(customer1.demand - customer2.demand)
 
-                # Define a threshold for what "related" means
-                if distance < 50.0 and demand_diff < 5:  # These thresholds can be tuned
+                # Define a threshold for what "related" means. These thresholds can be tuned.
+                if distance < 50.0 and demand_diff < 5:
                     cluster.append((route2, idx2, customer2))
                     visited.add(j)
 
@@ -445,7 +453,11 @@ class RelatedRemoval(DestroyOperator):
 
 
 class DestroyOperatorManager:
-    """Manages the selection and application of destroy operators."""
+    """
+    Manages the selection and application of destroy operators. It uses an
+    adaptive weighting mechanism to select operators that have been more
+    successful in finding good solutions.
+    """
 
     def __init__(self, problem: ProblemInstance):
         self.problem = problem
@@ -456,10 +468,11 @@ class DestroyOperatorManager:
             "route": RouteRemoval(),
             "related": RelatedRemoval(),
         }
+        # All operators start with an equal weight.
         self.weights = {name: 1.0 for name in self.operators.keys()}
 
     def select_operator(self) -> str:
-        """Selects a destroy operator based on their adaptive weights."""
+        """Selects a destroy operator based on their adaptive weights using roulette wheel selection."""
         operators = list(self.operators.keys())
         weights = [self.weights[op] for op in operators]
         total_weight = sum(weights)
@@ -498,5 +511,5 @@ class DestroyOperatorManager:
             for name in self.operators.keys():
                 self.weights[name] = performances[name] / total_performance
         else:
-            # If there's no performance data, reset to equal weights
+            # If there's no performance data, reset to equal weights.
             self.weights = {name: 1.0 for name in self.operators.keys()}

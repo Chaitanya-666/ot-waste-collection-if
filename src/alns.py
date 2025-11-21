@@ -47,7 +47,7 @@ class ALNS:
         # Core problem reference
         self.problem: ProblemInstance = problem_instance
 
-        # Current and best solutions
+        # Current and best solutions found during the search
         self.current_solution: Optional[Solution] = None
         self.best_solution: Optional[Solution] = None
 
@@ -57,11 +57,11 @@ class ALNS:
         self.start_time: Optional[float] = None
         self.convergence_history: List[float] = []
 
-        # Simulated annealing / acceptance parameters (simple defaults)
+        # Simulated annealing parameters for the acceptance criterion
         self.temperature: float = 1000.0
         self.cooling_rate: float = 0.995
 
-        # Randomness
+        # Randomness control for reproducibility
         self.seed: int = 42
         random.seed(self.seed)
 
@@ -77,7 +77,7 @@ class ALNS:
             op.name for op in self.repair_manager.operators
         ]
 
-        # Weights for adaptive operator selection
+        # Weights for adaptive operator selection, updated based on performance
         self.destroy_weights: Dict[str, float] = {
             name: 1.0 for name in self.destroy_operators
         }
@@ -85,7 +85,7 @@ class ALNS:
             name: 1.0 for name in self.repair_operators
         }
 
-        # Tracking scores & usage for each operator
+        # Tracking scores & usage for each operator to adapt weights
         self.destroy_scores: Dict[str, float] = {
             name: 0.0 for name in self.destroy_operators
         }
@@ -248,13 +248,13 @@ class ALNS:
         self.convergence_history = []
         self.history = []
 
-        # Generate the initial solution
+        # Generate the initial solution using a greedy heuristic
         self.current_solution = self._generate_initial_solution()
         if self.current_solution is None:
             self.current_solution = Solution(self.problem)
         self.best_solution = self.current_solution.copy()
 
-        # ensure best has metrics
+        # Ensure the best solution has its metrics calculated
         self.best_solution.calculate_metrics()
         if getattr(self.best_solution, "total_cost", None) is None:
             self.best_solution.total_cost = self._calculate_total_cost(
@@ -265,20 +265,20 @@ class ALNS:
         for it in range(self.max_iterations):
             self.iteration = it
 
-            # Select destroy and repair operators based on adaptive weights
+            # Step 1: Select destroy and repair operators based on adaptive weights
             destroy_name = self._select_destroy_operator()
             repair_name = self._select_repair_operator()
 
-            # Apply operators to create a new candidate solution
+            # Step 2: Apply operators to create a new candidate solution
             partial = self._destroy(self.current_solution, destroy_name)
             candidate = self._repair(partial, repair_name)
 
-            # ensure candidate metrics
+            # Ensure candidate solution has its metrics calculated
             if candidate is not None:
                 candidate.calculate_metrics()
                 candidate.total_cost = self._calculate_total_cost(candidate)
 
-            # Decide whether to accept the new solution
+            # Step 3: Decide whether to accept the new solution using simulated annealing
             accept = False
             if candidate is not None:
                 accept = self._accept_solution(candidate)
@@ -289,7 +289,7 @@ class ALNS:
                 if candidate.total_cost < self.best_solution.total_cost:
                     self.best_solution = candidate.copy()
 
-            # Update operator scores and weights for adaptive learning
+            # Step 4: Update operator scores and weights for adaptive learning
             self._update_operator_scores(destroy_name, repair_name, candidate)
             if it % self.adaptive_period == 0 and it > 0:
                 self._update_operator_weights()
@@ -303,7 +303,7 @@ class ALNS:
             except Exception:
                 self.convergence_history.append(0.0)
 
-            # Track history for video generation
+            # Track solution history for video generation if enabled
             if track_history:
                 routes_for_video = []
                 for route in self.best_solution.routes:
@@ -323,10 +323,10 @@ class ALNS:
                 except Exception:
                     pass
 
-        # final post-processing: attempt to fill remaining unassigned customers using repair manager
+        # Final post-processing: attempt to fill remaining unassigned customers
         try:
             if getattr(self.best_solution, "unassigned_customers", None):
-                # try applying repair operators until no unassigned left or no progress
+                # Try applying repair operators until no unassigned left or no progress
                 prev_unassigned = -1
                 attempts = 0
                 while (
@@ -346,7 +346,7 @@ class ALNS:
                         getattr(self.best_solution, "unassigned_customers", set())
                     )
         except Exception:
-            # tolerant of errors here
+            # Be tolerant of errors during this final, non-critical step
             pass
 
         # Ensure final solution metrics are consistent

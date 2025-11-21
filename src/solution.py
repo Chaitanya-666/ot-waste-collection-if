@@ -129,33 +129,41 @@ class Solution:
                               initially marked as unassigned.
         """
         self.problem = problem_instance
+        # A list of Route objects, each representing a vehicle's path.
         self.routes = []
+        # The primary objective function value, typically total distance.
         self.total_cost = 0.0
         self.total_distance = 0.0
         self.total_time = 0.0
-        # Keep unassigned customers as a set of customer IDs to avoid mutation issues.
+        # A set of customer IDs for customers not yet included in any route.
+        # Using IDs avoids issues with object references.
         if problem_instance is not None:
             try:
                 self.unassigned_customers = set(
                     c.id for c in problem_instance.customers
                 )
             except Exception:
-                # defensive fallback if problem structure is unexpected
+                # Defensive fallback if the problem structure is unexpected.
                 self.unassigned_customers = set()
         else:
             self.unassigned_customers = set()
 
     def calculate_metrics(self):
-        """Recalculates the total cost, distance, and time for the entire solution."""
+        """
+        Recalculates the total cost, distance, and time for the entire solution
+        by aggregating the metrics from each individual route.
+        """
         self.total_distance = 0.0
         self.total_time = 0.0
 
         for route in self.routes:
+            # Each route calculates its own metrics first.
             route.calculate_metrics(self.problem)
             self.total_distance += route.total_distance
             self.total_time += route.total_time
 
         # The primary objective function is total distance (cost).
+        # This could be extended to include other factors like penalties.
         self.total_cost = self.total_distance
 
     def is_feasible(self, problem=None):
@@ -164,42 +172,44 @@ class Solution:
         limits, ensuring all customers are served exactly once, and verifying
         that each individual route is feasible.
         """
-        # Determine which problem instance to use
+        # Determine which problem instance to use for validation.
         problem = problem if problem is not None else self.problem
         if problem is None:
             return False, "No problem instance provided for feasibility check"
 
-        # Filter out empty routes (depot-only routes with no customers)
+        # Filter out empty routes (depot-only routes with no customers).
         non_empty_routes = [
             r for r in self.routes 
             if r.nodes and any(getattr(n, "type", None) == "customer" for n in r.nodes)
         ]
         
-        # Check if the number of routes exceeds the available vehicles
+        # Check if the number of routes exceeds the available vehicles.
         if len(non_empty_routes) > problem.number_of_vehicles:
             return False, "Too many vehicles used"
 
-        # Check for complete and unique customer coverage
+        # Check for complete and unique customer coverage.
         served_ids = set()
         for route in non_empty_routes:
             for node in route.nodes:
                 if getattr(node, "type", None) == "customer":
+                    # A customer should not be served by more than one route.
                     if node.id in served_ids:
                         return False, f"Customer {node.id} served multiple times"
                     served_ids.add(node.id)
 
-        # Build expected served set from all problem customers minus unassigned IDs
+        # Build the set of all customer IDs from the problem definition.
         try:
             all_customer_ids = set(c.id for c in problem.customers)
         except Exception:
             return False, "Problem instance missing customers for feasibility check"
 
+        # The set of served customers must match the set of all customers minus the unassigned ones.
         expected_served_ids = all_customer_ids - set(self.unassigned_customers)
 
         if served_ids != expected_served_ids:
-            return False, "Not all customers are served"
+            return False, "Mismatch between served and assigned customers"
 
-        # Check feasibility of each individual route
+        # Check the feasibility of each individual route.
         for route in non_empty_routes:
             feasible, message = route.is_feasible(problem)
             if not feasible:
@@ -211,6 +221,8 @@ class Solution:
         """Creates a deep copy of the solution object to avoid modifying it by reference."""
         import copy
 
+        # Deep copy is crucial to ensure that modifications to a new solution
+        # do not affect the original one.
         return copy.deepcopy(self)
 
     def __repr__(self):
