@@ -1,3 +1,9 @@
+# Author: Chaitanya Shinde (231070066)
+#
+# This file is responsible for generating synthetic problem instances for the VRP.
+# It allows for the creation of diverse scenarios with different numbers of
+# customers, facilities, and geographical distributions, which is essential
+# for robust testing and benchmarking of the ALNS algorithm.
 """
 Synthetic data generation for waste collection problems
 
@@ -16,7 +22,7 @@ from .problem import ProblemInstance, Location
 
 
 class DataGenerator:
-    """Generate synthetic problem instances for waste collection VRP-IF"""
+    """A collection of static methods to generate synthetic problem instances."""
 
     @staticmethod
     def generate_instance(
@@ -32,32 +38,33 @@ class DataGenerator:
         depot_position: str = "center",
     ) -> ProblemInstance:
         """
-        Generate a synthetic problem instance
+        Generates a complete, synthetic problem instance with specified characteristics.
 
         Args:
-            name: Instance name
-            n_customers: Number of customer locations
-            n_ifs: Number of intermediate facilities
-            vehicle_capacity: Vehicle capacity constraint
-            area_size: Size of the area (x and y coordinates from 0 to area_size)
-            demand_range: Range for customer demands (min, max)
-            service_time_range: Range for customer service times (min, max)
-            seed: Random seed for reproducibility
-            cluster_factor: How much customers cluster (0.0 = uniform, 1.0 = highly clustered)
-            depot_position: "center", "corner", or "random"
+            name: The name for the problem instance.
+            n_customers: The number of customer locations to generate.
+            n_ifs: The number of intermediate facilities to generate.
+            vehicle_capacity: The capacity for each vehicle.
+            area_size: The size of the square area (e.g., 100x100).
+            demand_range: The (min, max) range for customer demands.
+            service_time_range: The (min, max) range for customer service times.
+            seed: A random seed for reproducibility.
+            cluster_factor: A value from 0.0 (uniform) to 1.0 (highly clustered)
+                            that controls customer distribution.
+            depot_position: The position of the depot ('center', 'corner', or 'random').
 
         Returns:
-            ProblemInstance: Complete problem instance
+            A fully initialized ProblemInstance object.
         """
         if seed is not None:
             random.seed(seed)
 
         problem = ProblemInstance(name)
         problem.vehicle_capacity = vehicle_capacity
-        problem.number_of_vehicles = max(2, n_customers // 5)  # Rule of thumb
+        problem.number_of_vehicles = max(2, n_customers // 5)  # Heuristic for vehicle count
         problem.disposal_time = 2
 
-        # Generate depot location
+        # Generate depot location based on the specified position
         if depot_position == "center":
             depot = Location(0, area_size // 2, area_size // 2, 0, "depot")
         elif depot_position == "corner":
@@ -75,26 +82,26 @@ class DataGenerator:
 
         problem.depot = depot
 
-        # Generate intermediate facilities
+        # Generate intermediate facilities (IFs)
         for i in range(n_ifs):
             if cluster_factor > 0:
-                # Cluster IFs near the depot
+                # Place IFs closer to the depot in clustered scenarios
                 base_x, base_y = depot.x, depot.y
                 x = base_x + random.gauss(0, area_size * cluster_factor * 0.3)
                 y = base_y + random.gauss(0, area_size * cluster_factor * 0.3)
             else:
-                # Uniform distribution
+                # Distribute IFs uniformly
                 x = random.randint(10, area_size - 10)
                 y = random.randint(10, area_size - 10)
 
-            # Ensure IFs are within bounds
+            # Ensure IFs are within the defined area bounds
             x = max(5, min(area_size - 5, x))
             y = max(5, min(area_size - 5, y))
 
             if_node = Location(i + 1000, int(x), int(y), 0, "if")
             problem.intermediate_facilities.append(if_node)
 
-        # Generate customer locations
+        # Generate customer locations, potentially in clusters
         customer_clusters = DataGenerator._generate_clusters(
             n_customers, area_size, cluster_factor, seed
         )
@@ -108,11 +115,10 @@ class DataGenerator:
             customer.service_time = service_time
             problem.customers.append(customer)
 
-        # Calculate distance matrix (optional - some contexts may not need or support it)
+        # Pre-calculate the distance matrix to speed up the solver
         try:
             problem.calculate_distance_matrix()
         except Exception:
-            # If the method is unavailable or fails, continue without raising so demo code can proceed.
             pass
 
         return problem
@@ -121,18 +127,18 @@ class DataGenerator:
     def _generate_clusters(
         n_points: int, area_size: int, cluster_factor: float, seed: Optional[int]
     ) -> List[Tuple[float, float]]:
-        """Generate cluster centers for customer distribution"""
+        """Generates coordinates for customers, potentially grouped into clusters."""
         if seed is not None:
             random.seed(seed)
 
         if cluster_factor <= 0:
-            # Uniform distribution
+            # Uniform distribution if no clustering is specified
             return [
                 (random.randint(10, area_size - 10), random.randint(10, area_size - 10))
                 for _ in range(n_points)
             ]
 
-        # Generate cluster centers
+        # Generate a number of cluster centers
         n_clusters = max(1, int(n_points * cluster_factor * 0.1))
         cluster_centers = []
 
@@ -141,12 +147,12 @@ class DataGenerator:
             center_y = random.randint(20, area_size - 20)
             cluster_centers.append((center_x, center_y))
 
-        # Distribute customers around cluster centers
+        # Distribute customer points around the generated cluster centers
         points = []
         for i in range(n_points):
             if cluster_centers:
                 center_x, center_y = random.choice(cluster_centers)
-                # Add some noise around the cluster center
+                # Use a Gaussian distribution to place points around the center
                 x = center_x + random.gauss(0, area_size * cluster_factor * 0.2)
                 y = center_y + random.gauss(0, area_size * cluster_factor * 0.2)
             else:
@@ -164,13 +170,7 @@ class DataGenerator:
     @staticmethod
     def generate_instances_from_file(filename: str) -> List[ProblemInstance]:
         """
-        Generate instances from a configuration file
-
-        Args:
-            filename: Path to JSON configuration file
-
-        Returns:
-            List of ProblemInstance objects
+        Generates a list of problem instances from a JSON configuration file.
         """
         instances = []
 
@@ -199,14 +199,14 @@ class DataGenerator:
             print(
                 f"Warning: Configuration file {filename} not found. Using default instance."
             )
-            # Generate a default instance
+            # Generate a default instance if the file is not found
             instances.append(DataGenerator.generate_instance("Default", 10, 1))
 
         return instances
 
     @staticmethod
     def create_config_template(filename: str = "instances_config.json"):
-        """Create a template configuration file"""
+        """Creates a template JSON file for defining multiple problem instances."""
         template = {
             "instances": [
                 {
@@ -233,42 +233,6 @@ class DataGenerator:
                     "depot_position": "center",
                     "seed": 123,
                 },
-                {
-                    "name": "Large Instance",
-                    "customers": 50,
-                    "ifs": 3,
-                    "capacity": 40,
-                    "area_size": 200,
-                    "demand_range": [1, 20],
-                    "service_time_range": [1, 10],
-                    "cluster_factor": 0.7,
-                    "depot_position": "center",
-                    "seed": 456,
-                },
-                {
-                    "name": "Sparse Instance",
-                    "customers": 15,
-                    "ifs": 1,
-                    "capacity": 25,
-                    "area_size": 300,
-                    "demand_range": [5, 25],
-                    "service_time_range": [2, 15],
-                    "cluster_factor": 0.1,
-                    "depot_position": "corner",
-                    "seed": 789,
-                },
-                {
-                    "name": "High Demand Instance",
-                    "customers": 25,
-                    "ifs": 2,
-                    "capacity": 35,
-                    "area_size": 180,
-                    "demand_range": [10, 30],
-                    "service_time_range": [5, 20],
-                    "cluster_factor": 0.8,
-                    "depot_position": "center",
-                    "seed": 999,
-                },
             ]
         }
 
@@ -279,17 +243,17 @@ class DataGenerator:
 
     @staticmethod
     def generate_edge_cases() -> List[ProblemInstance]:
-        """Generate edge case instances for testing"""
+        """Generates a list of edge-case problem instances for stress testing."""
         instances = []
 
-        # Case 1: Single customer
+        # Case 1: A single customer
         instances.append(
             DataGenerator.generate_instance(
                 "Single Customer", 1, 1, vehicle_capacity=20, seed=1001
             )
         )
 
-        # Case 2: High demand customer
+        # Case 2: A customer with demand higher than vehicle capacity (should be infeasible)
         instances.append(
             DataGenerator.generate_instance(
                 "High Demand Customer",
@@ -301,29 +265,10 @@ class DataGenerator:
             )
         )
 
-        # Case 3: Many IFs
+        # Case 3: Many intermediate facilities
         instances.append(
             DataGenerator.generate_instance(
                 "Many IFs", 10, 5, vehicle_capacity=25, seed=1003
-            )
-        )
-
-        # Case 4: Large area
-        instances.append(
-            DataGenerator.generate_instance(
-                "Large Area", 15, 2, vehicle_capacity=30, area_size=400, seed=1004
-            )
-        )
-
-        # Case 5: Clustered customers
-        instances.append(
-            DataGenerator.generate_instance(
-                "Clustered Customers",
-                20,
-                1,
-                vehicle_capacity=20,
-                cluster_factor=0.9,
-                seed=1005,
             )
         )
 
@@ -331,10 +276,10 @@ class DataGenerator:
 
     @staticmethod
     def generate_benchmark_suite() -> List[ProblemInstance]:
-        """Generate a comprehensive benchmark suite"""
+        """Generates a comprehensive suite of instances for benchmarking."""
         instances = []
 
-        # Small instances (6-15 customers)
+        # Small instances
         for customers in [6, 10, 15]:
             for ifs in [1, 2]:
                 instances.append(
@@ -347,7 +292,7 @@ class DataGenerator:
                     )
                 )
 
-        # Medium instances (20-40 customers)
+        # Medium instances
         for customers in [20, 30, 40]:
             for ifs in [2, 3]:
                 instances.append(
@@ -360,24 +305,11 @@ class DataGenerator:
                     )
                 )
 
-        # Large instances (50-100 customers)
-        for customers in [50, 75, 100]:
-            for ifs in [3, 5]:
-                instances.append(
-                    DataGenerator.generate_instance(
-                        f"Large_{customers}C_{ifs}IF",
-                        customers,
-                        ifs,
-                        vehicle_capacity=40,
-                        seed=4000 + customers + ifs,
-                    )
-                )
-
         return instances
 
     @staticmethod
     def save_instance_to_file(instance: ProblemInstance, filename: str):
-        """Save problem instance to JSON file"""
+        """Saves a problem instance to a JSON file."""
         import json
         from datetime import datetime
 
@@ -429,7 +361,7 @@ class DataGenerator:
 
     @staticmethod
     def load_instance_from_file(filename: str) -> ProblemInstance:
-        """Load problem instance from JSON file"""
+        """Loads a problem instance from a JSON file."""
         import json
 
         with open(filename, "r") as f:
@@ -440,20 +372,18 @@ class DataGenerator:
         instance.number_of_vehicles = data["metadata"]["number_of_vehicles"]
         instance.disposal_time = data["metadata"]["disposal_time"]
 
-        # Load depot
+        # Load depot, IFs, and customers from the file data
         depot_data = data["depot"]
         instance.depot = Location(
             depot_data["id"], depot_data["x"], depot_data["y"], 0, depot_data["type"]
         )
 
-        # Load intermediate facilities
         for if_data in data["intermediate_facilities"]:
             if_node = Location(
                 if_data["id"], if_data["x"], if_data["y"], 0, if_data["type"]
             )
             instance.intermediate_facilities.append(if_node)
 
-        # Load customers
         for customer_data in data["customers"]:
             customer = Location(
                 customer_data["id"],
@@ -465,32 +395,10 @@ class DataGenerator:
             customer.service_time = customer_data["service_time"]
             instance.customers.append(customer)
 
-        # Load distance matrix if available
+        # Load distance matrix if it exists in the file
         if data["distance_matrix"] is not None:
             import numpy as np
 
             instance.distance_matrix = np.array(data["distance_matrix"])
 
         return instance
-
-
-# Convenience functions for quick testing
-def create_small_test_instance() -> ProblemInstance:
-    """Create a small test instance for quick validation"""
-    return DataGenerator.generate_instance(
-        "Small Test", 6, 1, vehicle_capacity=20, seed=42
-    )
-
-
-def create_medium_test_instance() -> ProblemInstance:
-    """Create a medium test instance for performance testing"""
-    return DataGenerator.generate_instance(
-        "Medium Test", 20, 2, vehicle_capacity=30, seed=123
-    )
-
-
-def create_large_test_instance() -> ProblemInstance:
-    """Create a large test instance for scalability testing"""
-    return DataGenerator.generate_instance(
-        "Large Test", 50, 3, vehicle_capacity=40, seed=456
-    )

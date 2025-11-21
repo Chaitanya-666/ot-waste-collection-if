@@ -1,3 +1,10 @@
+# Author: Chaitanya Shinde (231070066)
+#
+# This file defines the data structures for representing a solution to the VRP.
+# - Route: Represents a single vehicle's path, including the sequence of
+#   locations visited and the load at each stop.
+# - Solution: Represents a complete solution for the problem, consisting of
+#   a collection of routes and a set of any unassigned customers.
 """
 Solution representation for VRP with IFs
 
@@ -8,6 +15,10 @@ Classes:
 
 
 class Route:
+    """
+    Represents a single vehicle's route, starting and ending at a depot.
+    It tracks the sequence of visited nodes, vehicle load, distance, and time.
+    """
     def __init__(self):
         self.nodes = []  # Sequence of locations (depot, customers, IFs)
         self.loads = []  # Load after visiting each node
@@ -16,7 +27,7 @@ class Route:
         self.vehicle_id = None
 
     def calculate_metrics(self, problem):
-        """Recalculate route metrics"""
+        """Recalculates all metrics for the route, such as distance, time, and load."""
         self.total_distance = 0.0
         self.total_time = 0.0
         current_load = 0
@@ -44,7 +55,7 @@ class Route:
                 current_load += float(getattr(next_node, "demand", 0))
             elif getattr(next_node, "type", None) == "if":
                 self.total_time += getattr(problem, "disposal_time", 0)
-                current_load = 0
+                current_load = 0  # Load is reset at an IF
 
             # store load corresponding to next_node position (i+1)
             if i + 1 < len(self.loads):
@@ -55,7 +66,7 @@ class Route:
             self.loads += [0] * (len(self.nodes) - len(self.loads))
 
     def is_feasible(self, problem):
-        """Check route feasibility"""
+        """Checks if the route is feasible according to problem constraints."""
         # Empty routes or routes with only depot are considered feasible but should be filtered
         if not self.nodes:
             return True, "Empty route (should be removed)"
@@ -67,7 +78,7 @@ class Route:
             else:
                 return False, "Single node route without depot"
         
-        # Check depot at start and end (compare by type and id, not object identity)
+        # Check that route starts and ends at the same depot
         if self.nodes[0].type != "depot" or self.nodes[-1].type != "depot":
             return False, "Invalid depot visits"
         
@@ -82,7 +93,7 @@ class Route:
             current = self.nodes[i]
             next_node = self.nodes[i + 1]
 
-            # Check capacity
+            # Check capacity constraint
             if current_load > problem.vehicle_capacity:
                 return False, f"Capacity exceeded after node {current.id}"
 
@@ -105,23 +116,24 @@ class Route:
 
 
 class Solution:
+    """
+    Represents a complete solution to the VRP, containing a list of routes
+    and a set of customers that are not yet assigned to any route.
+    """
     def __init__(self, problem_instance=None):
         """
-        Solution container.
+        Initializes a Solution.
 
         Args:
-            problem_instance: optional ProblemInstance. If provided, the solution will
-                initialize `unassigned_customers` as the set of all customer IDs from the
-                problem. If not provided, `unassigned_customers` starts empty and the
-                `problem` attribute can be set later by the caller.
+            problem_instance: If provided, all customers from the problem are
+                              initially marked as unassigned.
         """
         self.problem = problem_instance
         self.routes = []
         self.total_cost = 0.0
         self.total_distance = 0.0
         self.total_time = 0.0
-        # Keep unassigned customers as a set of customer IDs to avoid identity/mutation issues.
-        # If a problem instance is provided, initialize to all customer IDs; otherwise empty.
+        # Keep unassigned customers as a set of customer IDs to avoid mutation issues.
         if problem_instance is not None:
             try:
                 self.unassigned_customers = set(
@@ -134,7 +146,7 @@ class Solution:
             self.unassigned_customers = set()
 
     def calculate_metrics(self):
-        """Recalculate solution metrics"""
+        """Recalculates the total cost, distance, and time for the entire solution."""
         self.total_distance = 0.0
         self.total_time = 0.0
 
@@ -143,15 +155,14 @@ class Solution:
             self.total_distance += route.total_distance
             self.total_time += route.total_time
 
-        # Cost can include multiple factors
-        self.total_cost = self.total_distance  # Can be enhanced with time/vehicle costs
+        # The primary objective function is total distance (cost).
+        self.total_cost = self.total_distance
 
     def is_feasible(self, problem=None):
-        """Check if solution is feasible.
-
-        Optional `problem` parameter allows callers to provide a ProblemInstance for
-        the feasibility check. If omitted, `self.problem` is used. If neither is
-        present the method returns infeasible with a message.
+        """
+        Checks if the entire solution is feasible. This includes checking vehicle
+        limits, ensuring all customers are served exactly once, and verifying
+        that each individual route is feasible.
         """
         # Determine which problem instance to use
         problem = problem if problem is not None else self.problem
@@ -164,11 +175,11 @@ class Solution:
             if r.nodes and any(getattr(n, "type", None) == "customer" for n in r.nodes)
         ]
         
-        # Check vehicle limit (respect the problem's available vehicles)
+        # Check if the number of routes exceeds the available vehicles
         if len(non_empty_routes) > problem.number_of_vehicles:
             return False, "Too many vehicles used"
 
-        # Check customer coverage (use IDs; unassigned_customers stores IDs)
+        # Check for complete and unique customer coverage
         served_ids = set()
         for route in non_empty_routes:
             for node in route.nodes:
@@ -188,7 +199,7 @@ class Solution:
         if served_ids != expected_served_ids:
             return False, "Not all customers are served"
 
-        # Check individual routes (only non-empty ones)
+        # Check feasibility of each individual route
         for route in non_empty_routes:
             feasible, message = route.is_feasible(problem)
             if not feasible:
@@ -197,7 +208,7 @@ class Solution:
         return True, "Solution is feasible"
 
     def copy(self):
-        """Create a deep copy of the solution"""
+        """Creates a deep copy of the solution object to avoid modifying it by reference."""
         import copy
 
         return copy.deepcopy(self)

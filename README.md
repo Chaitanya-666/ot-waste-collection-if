@@ -430,103 +430,75 @@ def analyze_route(self, route: Route, problem: ProblemInstance):
 
 ---
 
-## 👥 **Author Contributions ( approximately 50 - 50 contirbution was done )**
+## 👥 **Author Contributions**
 
-### **Chaitanya Shinde - Algorithm Development & Core Implementation (50%)**
-
-**Primary Responsibilities:**
-- **ALNS Algorithm Design and Implementation**
-  - Designed destruction operator framework
-  - Implemented adaptive weight management system
-  - Created acceptance criterion with simulated annealing
-  - Optimized computational performance for large instances
-
-- **Problem Formulation and Mathematical Modeling**
-  - Developed VRP-IF mathematical formulation
-  - Implemented distance matrix calculations
-  - Created feasibility checking algorithms
-  - Designed constraint handling mechanisms
-
-- **Core Optimization Engine**
-  - Built `src/alns.py` - main optimization framework
-  - Created `src/destroy_operators.py` - destruction heuristics
-  - Developed `src/repair_operators.py` - repair mechanisms
-  - Implemented `src/solution.py` - solution representation
-
-- **Performance Analysis System**
-  - Designed comprehensive performance metrics
-  - Created efficiency analysis algorithms
-  - Implemented route-level optimization analysis
-  - Built benchmarking framework
-
-**Technical Achievements:**
-- **Algorithm Efficiency**: Optimized ALNS for municipal-scale problems (50+ customers)
-- **Memory Management**: Efficient data structures for large distance matrices
-- **Convergence Analysis**: Built-in convergence tracking and analysis
-- **Scalability**: Tested up to 100-customer problems
-
-**Code Metrics:**
-- ~1,200 lines of core ALNS implementation
-- 5 destruction operators implemented
-- 3 repair operators with adaptive selection
-- Comprehensive test suite with 12 test cases
+This project was developed with a 50-50 contribution split between the two authors. The workload was distributed to ensure that both authors contributed equally to the core algorithmic components, user-facing features, and overall project quality.
 
 ---
 
-### **Harsh Sharma - Visualization & User Experience (50%)**
+### **1. Chaitanya Shinde | 231070066**
 
-**Primary Responsibilities:**
-- **Video Creation and Animation System**
-  - Designed dynamic video creation framework
-  - Implemented route evolution visualization
-  - Created cost convergence animations
-  - Built multi-format output support (GIF/MP4)
+**Role: Core Algorithm and Data Structures (50% of total workload)**
 
-- **User Interface and CLI Development**
-  - Designed comprehensive command-line interface
-  - Created intuitive argument parsing system
-  - Implemented progress tracking and real-time feedback
-  - Built configuration management system
+Chaitanya was responsible for designing and implementing the foundational logic of the VRP solver. This involved creating the data structures to represent the problem and solution, as well as developing the core metaheuristic engine.
 
-- **Visualization and Graphics**
-  - Developed ASCII terminal visualizations
-  - Created matplotlib integration for professional plots
-  - Designed dynamic scaling algorithms
-  - Implemented color-coded route mapping
+**Key Responsibilities & Modules:**
 
-- **Documentation and User Experience**
-  - Created comprehensive README documentation
-  - Developed step-by-step implementation guides
-  - Built example workflows and tutorials
-  - Implemented comprehensive test suite
+- **`src/problem.py`**:
+  - Implemented the `ProblemInstance` class to define the VRP, including depots, customers, and intermediate facilities.
+  - Implemented the `Location` class to represent all nodes in the problem space.
+  - Developed methods for distance calculations and feasibility checks.
 
-**Technical Achievements:**
-- **Video Creation**: Automated optimization process visualization
-- **User Experience**: Intuitive CLI with 10+ command options
-- **Accessibility**: ASCII fallbacks for all visualization features
-- **Professional Output**: Publication-ready visualizations
+- **`src/solution.py`**:
+  - Implemented the `Solution` and `Route` classes to represent a complete set of vehicle routes.
+  - Developed methods for calculating solution metrics (cost, distance) and ensuring the validity of routes.
 
-**Code Metrics:**
-- ~800 lines of video creation and visualization code
-- 3 different video formats supported
-- ASCII visualization system for terminal environments
-- Complete CLI with help system and examples
+- **`src/alns.py`**:
+  - Implemented the main `ALNS` class, which orchestrates the entire optimization process.
+  - Developed the core loop for the Adaptive Large Neighborhood Search, including the simulated annealing acceptance criterion.
+  - Implemented the logic for adaptive weight adjustment for the operators.
+
+- **`src/destroy_operators.py`**:
+  - Implemented a suite of "destroy" operators (`RandomRemoval`, `WorstRemoval`, `ShawRemoval`, `RouteRemoval`) that deconstruct a solution to explore new search spaces.
+
+- **`src/repair_operators.py`**:
+  - Implemented a suite of "repair" operators (`GreedyInsertion`, `RegretInsertion`, `IFAwareRepair`) that rebuild a partial solution into a new, complete one.
+
+- **`src/data_generator.py`**:
+  - Developed the `DataGenerator` class to create synthetic, reproducible problem instances with varying characteristics (e.g., clustered vs. uniform distribution).
 
 ---
 
-### **Joint Contributions:**
+### **2. Harsh Sharma | 231070064**
 
-**Shared Implementation:**
-- **Problem Definition** (`src/problem.py`) - Joint design
-- **Data Generation** (`src/data_generator.py`) - Collaborative development
-- **Testing Framework** - Joint test design and implementation
-- **Performance Optimization** - Shared algorithmic improvements
+**Role: UI, Visualization, and Testing (50% of total workload)**
 
-**Joint Achievements:**
-- **100% Test Coverage** - All components thoroughly tested
-- **Scalability Testing** - Validated up to 100-customer problems
-- **Performance Benchmarking** - Comprehensive performance analysis
-- **User Documentation** - Complete user and developer guides
+Harsh was responsible for all user-facing components, including the command-line interface, visualization tools, and video generation. He also developed the comprehensive testing framework to ensure the robustness and correctness of the entire application.
+
+**Key Responsibilities & Modules:**
+
+- **`main.py`**:
+  - Implemented the primary command-line interface (CLI) using `argparse`.
+  - Designed and implemented the different demonstration modes (`basic`, `comprehensive`, `benchmark`).
+  - Integrated all modules to create a cohesive and runnable application.
+
+- **`simple_video_creator.py`**:
+  - Developed the `SimpleVideoCreator` class to generate animated GIFs of the route optimization process and cost convergence using `matplotlib`.
+  - Implemented the logic for capturing and rendering each frame of the animation.
+
+- **`src/utils.py`**:
+  - Implemented the `RouteVisualizer` class for creating static plots of solutions and convergence graphs.
+  - Implemented the `PerformanceAnalyzer` class to calculate and report on a wide range of solution quality metrics.
+
+- **`tests/test_all.py`**:
+  - Developed a comprehensive test suite using Python's `unittest` framework.
+  - Wrote unit tests for all core components, including data structures, operators, and the ALNS engine.
+  - Wrote integration tests to verify the end-to-end functionality of the application.
+
+- **Documentation & Project Structure**:
+  - Created and maintained the detailed `README.md` file.
+  - Ensured a logical and clean project structure.
+  - Documented the usage of the CLI and other user-facing features.
 
 ---
 

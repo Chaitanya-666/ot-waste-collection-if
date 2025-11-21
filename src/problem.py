@@ -1,3 +1,9 @@
+# Author: Chaitanya Shinde (231070066)
+#
+# This file defines the data structures for the Vehicle Routing Problem.
+# - Location: Represents a single point on the map (depot, customer, or facility).
+# - ProblemInstance: Holds all the data for a specific VRP scenario, including
+#   all locations, vehicle constraints, and the distance matrix.
 """
 Problem definition for VRP with Intermediate Facilities
 
@@ -16,6 +22,10 @@ except Exception:
 
 
 class Location:
+    """
+    Represents a physical location in the VRP.
+    It can be a depot, a customer with a certain demand, or an intermediate facility.
+    """
     def __init__(
         self,
         id: int,
@@ -37,6 +47,10 @@ class Location:
 
 
 class ProblemInstance:
+    """
+    Defines the entire problem, including all locations, vehicle properties,
+    and constraints. It also handles distance calculations.
+    """
     def __init__(self, name: str = "Unknown") -> None:
         self.name: str = name
         self.depot: Optional[Location] = None
@@ -54,22 +68,20 @@ class ProblemInstance:
         self.distance_matrix = None
 
     def calculate_distance(self, loc1: Location, loc2: Location) -> float:
-        """Calculate Euclidean distance between two locations"""
+        """Calculate Euclidean distance between two locations."""
         return ((loc1.x - loc2.x) ** 2 + (loc1.y - loc2.y) ** 2) ** 0.5
 
     def calculate_travel_time(
         self, loc1: Location, loc2: Location, speed: float = 1.0
     ) -> float:
-        """Calculate travel time between locations given speed"""
+        """Calculate travel time between locations given a constant speed."""
         return self.calculate_distance(loc1, loc2) / speed
 
     def calculate_distance_matrix(self):
         """
-        Build a full distance matrix for this problem instance.
-
-        The ordering used is: [depot] + customers + intermediate_facilities.
-        The result is stored in `self.distance_matrix` as a numpy array if numpy
-        is available, otherwise as a nested Python list.
+        Builds a pre-computed distance matrix for all locations in the problem.
+        This avoids recalculating distances and speeds up the optimization process.
+        The ordering is [depot] + customers + intermediate_facilities.
         """
         # Build ordered list of nodes
         nodes = []
@@ -83,7 +95,7 @@ class ProblemInstance:
             self.distance_matrix = None
             return self.distance_matrix
 
-        # Compute distances
+        # Use numpy for efficient matrix operations if available
         if np is not None:
             mat = np.zeros((n, n), dtype=float)
             for i in range(n):
@@ -91,6 +103,7 @@ class ProblemInstance:
                     mat[i, j] = self.calculate_distance(nodes[i], nodes[j])
             self.distance_matrix = mat
         else:
+            # Fallback to native Python lists if numpy is not installed
             mat = [[0.0 for _ in range(n)] for _ in range(n)]
             for i in range(n):
                 for j in range(n):
@@ -100,18 +113,17 @@ class ProblemInstance:
         return self.distance_matrix
 
     def get_total_demand(self) -> float:
-        """Calculate total demand across all customers"""
+        """Calculate the sum of demands from all customers."""
         return float(sum(float(customer.demand) for customer in self.customers))
 
     def get_min_vehicles_needed(self) -> float:
-        """Calculate minimum number of vehicles needed based on demand.
-
-        Returns a float so `float('inf')` can be returned for infeasible settings
-        (e.g., vehicle_capacity <= 0).
+        """
+        Calculates the theoretical minimum number of vehicles required to serve
+        the total demand, based on vehicle capacity.
         """
         if self.vehicle_capacity <= 0:
             return float("inf")
-        # Use ceil-like integer division but return a float as legacy callers expect
+        # Use ceiling division to determine how many vehicles are needed
         total = self.get_total_demand()
         per_vehicle = float(self.vehicle_capacity)
         needed = (
@@ -130,7 +142,7 @@ class ProblemInstance:
         )
 
     def is_feasible(self) -> Tuple[bool, str]:
-        """Check if problem instance is feasible"""
+        """Checks for basic feasibility of the problem instance."""
         if not self.depot:
             return False, "No depot defined"
         if not self.customers:
@@ -139,6 +151,7 @@ class ProblemInstance:
             return False, "No intermediate facilities defined"
         if self.vehicle_capacity <= 0:
             return False, "Invalid vehicle capacity"
+        # A customer's demand cannot be greater than the vehicle's capacity
         if (
             self.customers
             and max(c.demand for c in self.customers) > self.vehicle_capacity
@@ -147,7 +160,7 @@ class ProblemInstance:
         return True, "Problem instance is feasible"
 
     def is_route_feasible(self, route) -> Tuple[bool, str]:
-        """Check if a single route is feasible"""
+        """Checks if a single given route is feasible based on capacity."""
         if not route.nodes:
             return False, "Empty route"
 
@@ -161,6 +174,7 @@ class ProblemInstance:
                 if current_load > self.vehicle_capacity:
                     return False, f"Capacity exceeded at customer {node.id}"
             elif node.type == "if":
+                # Load is reset to zero at an intermediate facility
                 current_load = 0
 
         return True, "Route is feasible"

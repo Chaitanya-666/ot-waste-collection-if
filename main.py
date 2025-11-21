@@ -1,3 +1,9 @@
+# Author: Harsh Sharma (231070064)
+#
+# This file serves as the main entry point for the application. It provides a
+# command-line interface (CLI) for users to interact with the VRP solver.
+# It handles argument parsing, orchestrates the different modules (data generation,
+# solving, visualization), and provides several demonstration modes.
 #!/usr/bin/env python3
 """
 OT Project: Municipal Waste Collection Modelling with Intermediate Facilities
@@ -45,7 +51,10 @@ except ImportError:
 
 
 class OptimizationVideoTracker:
-    """Track optimization history for video creation"""
+    """
+    Tracks the state of the optimization process at different iterations
+    to generate a video of the solution's evolution.
+    """
     
     def __init__(self, problem: ProblemInstance):
         self.problem = problem
@@ -53,7 +62,7 @@ class OptimizationVideoTracker:
         self.current_best_cost = float('inf')
         
     def track_state(self, iteration: int, solution, current_cost: float):
-        """Track optimization state for video"""
+        """Records the current state of the solution for a single frame of the video."""
         
         # Extract route coordinates for visualization
         routes_coords = []
@@ -71,14 +80,14 @@ class OptimizationVideoTracker:
             'routes': routes_coords
         }
         
-        # Update best cost
+        # Update best cost found so far
         if current_cost < self.current_best_cost:
             self.current_best_cost = current_cost
             
         self.optimization_history.append(state)
         
     def create_video(self, output_filename: str = None) -> str:
-        """Create optimization video from tracked history"""
+        """Creates and saves an optimization video from the tracked history."""
         if not VIDEO_CREATOR_AVAILABLE:
             print("⚠️ Video creation not available - install requirements")
             return None
@@ -88,7 +97,7 @@ class OptimizationVideoTracker:
             return None
             
         try:
-            # Prepare data for video creator
+            # Prepare data in the format expected by the video creator
             customer_data = {}
             for customer in self.problem.customers:
                 customer_data[(customer.x, customer.y)] = customer.demand
@@ -99,7 +108,7 @@ class OptimizationVideoTracker:
             # Initialize video creator
             video_creator = SimpleVideoCreator()
             
-            # Create video
+            # Create route evolution video
             if output_filename is None:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_filename = f"alns_optimization_{timestamp}.gif"
@@ -115,7 +124,7 @@ class OptimizationVideoTracker:
             if video_path:
                 print(f"🎬 Optimization video created: {video_path}")
                 
-                # Create cost convergence video too
+                # Also create a video of the cost convergence
                 costs = [state['cost'] for state in self.optimization_history]
                 cost_filename = output_filename.replace('.gif', '_cost.gif')
                 cost_path = video_creator.create_cost_animation(
@@ -133,7 +142,7 @@ class OptimizationVideoTracker:
 
 
 def create_sample_instance() -> ProblemInstance:
-    """Create the original sample instance for demonstration"""
+    """Creates a small, hardcoded problem instance for basic demonstration."""
     print("Creating sample problem instance...")
 
     problem = ProblemInstance("Sample Instance")
@@ -141,15 +150,11 @@ def create_sample_instance() -> ProblemInstance:
     problem.number_of_vehicles = 3
     problem.disposal_time = 2
 
-    # Add depot
+    # Add depot, customers, and IFs
     depot = Location(0, 0, 0, 0, "depot")
     problem.depot = depot
-
-    # Add intermediate facility(ies)
     if1 = Location(100, 20, 20, 0, "if")
     problem.intermediate_facilities.append(if1)
-
-    # Add customers (id, x, y, demand, type)
     customers = [
         Location(1, 5, 2, 4, "customer"),
         Location(2, 3, 8, 6, "customer"),
@@ -166,7 +171,7 @@ def create_sample_instance() -> ProblemInstance:
 
 
 def create_comprehensive_instance() -> ProblemInstance:
-    """Create a more comprehensive instance for demonstration"""
+    """Creates a more complex, randomly generated instance for demonstration."""
     print("Creating comprehensive problem instance...")
 
     return DataGenerator.generate_instance(
@@ -183,83 +188,53 @@ def create_comprehensive_instance() -> ProblemInstance:
 
 
 def run_basic_demonstration(create_video: bool = False, args=None):
-    """Run the basic demonstration with original sample"""
+    """Runs a simple demonstration with a small, fixed problem instance."""
     print("\n" + "=" * 60)
     print("BASIC DEMONSTRATION")
     print("=" * 60)
 
-    # Create problem
     problem = create_sample_instance()
-
     print(f"\nProblem: {problem}")
-    print(
-        f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
-    )
-    print(f"Vehicle Capacity: {problem.vehicle_capacity}")
 
-    # Initialize solver
+    # Initialize and run the ALNS solver
     solver = ALNS(problem)
     solver.max_iterations = 200
 
-    # Initialize video tracker if enabled
+    # Setup video tracking if requested
     video_tracker = None
     if create_video:
         if VIDEO_CREATOR_AVAILABLE:
             video_tracker = OptimizationVideoTracker(problem)
-            print("🎬 Video tracking enabled - optimization process will be recorded!")
+            print("🎬 Video tracking enabled!")
         else:
             print("⚠️ Video tracking requested but video creator not available")
 
-    # Set up video tracking callback if enabled
     if video_tracker:
         def _video_callback(iteration_idx, best_solution):
-            try:
-                # Track state for video (every 10 iterations to avoid too many frames)
-                if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
-                    current_cost = getattr(best_solution, 'total_cost', float('inf'))
-                    video_tracker.track_state(iteration_idx, best_solution, current_cost)
-            except Exception:
-                pass
+            if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
+                current_cost = getattr(best_solution, 'total_cost', float('inf'))
+                video_tracker.track_state(iteration_idx, best_solution, current_cost)
         solver.iteration_callback = _video_callback
 
-    # Run optimization
     print(f"\nStarting ALNS optimization with {solver.max_iterations} iterations...")
     start_time = time.time()
-
     solution = solver.run(max_iterations=solver.max_iterations)
     end_time = time.time()
 
-    # Create optimization video if tracking was enabled
+    # Create video if tracking was enabled
     if video_tracker:
-        try:
-            print("\n🎬 Creating optimization video from tracked history...")
-            video_path = video_tracker.create_video()
-            if video_path:
-                print("✅ Optimization video created successfully!")
-        except Exception as e:
-            print(f"⚠️ Video creation failed: {e}")
-            pass
+        video_tracker.create_video()
 
     print(f"ALNS completed in {end_time - start_time:.2f} seconds")
 
-    # Display results
+    # Display basic results
     print("\n" + "-" * 40)
     print("OPTIMIZATION RESULTS")
     print("-" * 40)
-    print(f"Final best solution: {solution.total_cost:.2f}")
-    print(f"Total iterations: {solver.iteration}")
+    print(f"Final best solution cost: {solution.total_cost:.2f}")
     print(f"Routes: {len(solution.routes)}")
-    print(f"Unassigned customers: {len(solution.unassigned_customers)}")
-
-    # Display route details
-    print("\nRoute Details:")
     for idx, route in enumerate(solution.routes):
-        print(
-            f"Route {idx + 1}: Distance={route.total_distance:.2f}, Time={route.total_time:.2f}"
-        )
-        print(
-            f"  Sequence: {' -> '.join([f'{node.type[0].upper()}{node.id}' for node in route.nodes])}"
-        )
+        print(f"  Route {idx + 1}: {' -> '.join([f'{node.type[0].upper()}{node.id}' for node in route.nodes])}")
 
     return solution, problem, solver
 
@@ -269,817 +244,191 @@ def run_comprehensive_demonstration(
 ) -> Tuple[
     Optional[object], ProblemInstance, Optional[object], Optional[Dict[str, Any]]
 ]:
-    """Run a comprehensive demonstration with analysis
-
-    Args:
-        live: when True, enable live plotting via RouteVisualizer and wire the solver
-              iteration callback so the plot updates during optimization.
-        iterations: number of ALNS iterations to run.
-
-    Returns:
-        A 4-tuple: (solution or None, problem, solver or None, analysis dict or None).
-        If the instance is infeasible the function returns (None, problem, None, None).
+    """
+    Runs a more comprehensive demonstration with a generated problem,
+    detailed analysis, and optional live visualization.
     """
     print("\n" + "=" * 60)
     print("COMPREHENSIVE DEMONSTRATION")
     print("=" * 60)
 
-    # Create problem
     problem = create_comprehensive_instance()
 
-    # Ensure the solver has enough vehicles to feasibly serve total demand.
+    # Adjust vehicle count to ensure feasibility
     try:
         min_needed = int(problem.get_min_vehicles_needed())
-        # Fix infinity comparison issue - default number_of_vehicles is infinity
         current_limit = problem.number_of_vehicles
-        needs_adjustment = (
-            current_limit == float('inf') or 
-            current_limit < min_needed or
-            current_limit <= 0
-        )
-        
-        if needs_adjustment:
+        if current_limit == float('inf') or current_limit < min_needed or current_limit <= 0:
             problem.number_of_vehicles = min_needed
-            print(
-                f"Note: adjusted problem.number_of_vehicles to minimum required: {problem.number_of_vehicles}"
-            )
+            print(f"Note: Adjusted vehicle count to minimum required: {problem.number_of_vehicles}")
     except Exception:
-        # If anything goes wrong here, continue — a subsequent feasibility check will catch issues.
         pass
 
-    # Sanity / feasibility check: if instance is still infeasible, warn and exit early.
+    # Check for basic problem feasibility before running
     feasible_flag, feasible_msg = problem.is_feasible()
     print(f"\nProblem: {problem}")
-    print(
-        f"Customers: {len(problem.customers)}, IFs: {len(problem.intermediate_facilities)}"
-    )
-    print(f"Vehicle Capacity: {problem.vehicle_capacity}")
     if not feasible_flag:
         print(f"Problem feasibility check: {feasible_flag} ({feasible_msg})")
-        print(
-            "Instance is infeasible with the current settings. Adjust vehicle capacity or number_of_vehicles and retry."
-        )
-        # Return a consistent tuple so callers do not crash on unpacking
         return None, problem, None, None
 
-    # Initialize solver
+    # Initialize solver and progress tracking
     solver = ALNS(problem)
     solver.max_iterations = int(iterations)
-
-    # Initialize video tracker if enabled
+    ProgressTracker = create_progress_tracker()
+    progress = ProgressTracker(solver.max_iterations)
+    
+    # Setup video tracking if requested
     video_tracker = None
     if create_video:
         if VIDEO_CREATOR_AVAILABLE:
             video_tracker = OptimizationVideoTracker(problem)
-            print("🎬 Video tracking enabled - optimization process will be recorded!")
+            print("🎬 Video tracking enabled!")
         else:
             print("⚠️ Video tracking requested but video creator not available")
 
-    # Progress tracking for optimization
-    ProgressTracker = create_progress_tracker()
-    progress = ProgressTracker(solver.max_iterations)
-    
-    # Optionally enable live plotting: set up visualizer and register iteration callback
+    # Setup callbacks for progress updates and live plotting
     visualizer = None
     if live:
         try:
             visualizer = RouteVisualizer(problem, live=True)
             visualizer.start_live(title=f"Live - {problem.name}")
-
             def _iteration_callback(iteration_idx, best_solution):
                 progress.update(iteration_idx)
                 if video_tracker:
-                    try:
-                        # Track state for video (every 10 iterations to avoid too many frames)
-                        if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
-                            current_cost = getattr(best_solution, 'total_cost', float('inf'))
-                            video_tracker.track_state(iteration_idx, best_solution, current_cost)
-                    except Exception:
-                        pass
-                try:
-                    visualizer.update_live(
-                        best_solution, getattr(solver, "convergence_history", [])
-                    )
-                except Exception:
-                    # swallow visualization errors to keep solver running
-                    pass
-
-            # Assign callback (acceptable at runtime; some static checkers may warn)
-            solver.iteration_callback = _iteration_callback
-            print("🎬 Live plotting enabled for comprehensive demonstration.")
-        except Exception:
-            visualizer = None
-    else:
-        # Add progress callback without visualization
-        def _progress_callback(iteration_idx, best_solution):
-            progress.update(iteration_idx)
-            if video_tracker:
-                try:
-                    # Track state for video (every 10 iterations to avoid too many frames)
                     if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
                         current_cost = getattr(best_solution, 'total_cost', float('inf'))
                         video_tracker.track_state(iteration_idx, best_solution, current_cost)
-                except Exception:
-                    pass
-        
+                visualizer.update_live(best_solution, getattr(solver, "convergence_history", []))
+            solver.iteration_callback = _iteration_callback
+            print("🎬 Live plotting enabled.")
+        except Exception:
+            visualizer = None
+    else:
+        def _progress_callback(iteration_idx, best_solution):
+            progress.update(iteration_idx)
+            if video_tracker:
+                if iteration_idx % 10 == 0 or iteration_idx == solver.max_iterations:
+                    current_cost = getattr(best_solution, 'total_cost', float('inf'))
+                    video_tracker.track_state(iteration_idx, best_solution, current_cost)
         solver.iteration_callback = _progress_callback
 
-    # Run optimization
+    # Run the optimization
     print(f"\n🚀 Starting ALNS optimization with {solver.max_iterations} iterations...")
-    if not live:
-        print("📊 Progress tracking enabled - watch the optimization progress!")
     start_time = time.time()
-
     solution = solver.run(max_iterations=solver.max_iterations)
     end_time = time.time()
-
     print(f"ALNS completed in {end_time - start_time:.2f} seconds")
 
-    # If live plotting was enabled, do a final update and stop interactive mode.
     if visualizer is not None:
-        try:
-            visualizer.update_live(solution, getattr(solver, "convergence_history", []))
-            visualizer.stop_live()
-        except Exception:
-            pass
+        visualizer.stop_live()
 
-    # Performance analysis
+    # Analyze and display detailed results
     analyzer = PerformanceAnalyzer(problem)
     analysis = analyzer.analyze_solution(solution)
     
-    # Create optimization video if tracking was enabled
     if video_tracker:
-        try:
-            print("\n🎬 Creating optimization video from tracked history...")
-            video_path = video_tracker.create_video()
-            if video_path:
-                print("✅ Optimization video created successfully!")
-        except Exception as e:
-            print(f"⚠️ Video creation failed: {e}")
-            pass
+        video_tracker.create_video()
 
-    # Display comprehensive results
     print("\n" + "-" * 60)
     print("COMPREHENSIVE ANALYSIS")
     print("-" * 60)
-
-    print(f"\nSOLUTION OVERVIEW:")
-    print(f"  Total Cost: {analysis['total_cost']:.2f}")
-    print(f"  Total Distance: {analysis['total_distance']:.2f}")
-    print(f"  Total Time: {analysis['total_time']:.2f}")
-    print(f"  Vehicles Used: {analysis['num_vehicles']}")
-    print(f"  IF Visits: {analysis['if_visits']}")
-
-    print(f"\nEFFICIENCY METRICS:")
-    metrics = analysis["efficiency_metrics"]
-    print(f"  Distance Efficiency: {metrics['distance_efficiency']:.3f}")
-    print(f"  Capacity Utilization: {metrics['capacity_utilization']:.1%}")
-    print(f"  Vehicle Efficiency: {metrics['vehicle_efficiency']:.1%}")
-    print(f"  IF Efficiency: {metrics['if_efficiency']:.1f} visits/vehicle")
-
-    print(f"\nROUTE DETAILS:")
-    for route in analysis["route_details"]:
-        print(f"  Vehicle {route['vehicle_id']}:")
-        print(f"    Distance: {route['distance']:.2f}")
-        print(f"    Time: {route['time']:.2f}")
-        print(f"    Customers: {route['customers_served']}")
-        print(f"    IF Visits: {route['if_visits']}")
-        print(f"    Max Load: {route['max_load']:.1f}/{problem.vehicle_capacity}")
-        print(f"    Load Utilization: {route['load_utilization']:.1%}")
-
-    # Generate performance report
-    print(f"\n" + "-" * 60)
-    print("PERFORMANCE REPORT")
-    print("-" * 60)
-    report = analyzer.generate_report(solution)
-    print(report)
+    print(analyzer.generate_report(solution))
 
     return solution, problem, solver, analysis
 
 
 def run_benchmark_demonstration():
-    """Run benchmarking with multiple instances"""
+    """Runs the solver on a suite of problems of increasing size and reports performance."""
     print("\n" + "=" * 60)
     print("BENCHMARK DEMONSTRATION")
     print("=" * 60)
 
-    # Create test instances
     instances = [
         ("Small", 6, 1),
         ("Medium", 15, 2),
         ("Large", 25, 3),
     ]
-
     results = []
 
     for name, n_customers, n_ifs in instances:
-        print(f"\n--- {name} Instance ({n_customers} customers, {n_ifs} IFs) ---")
-
-        # Create instance
+        print(f"\n--- Benchmarking {name} Instance ---")
         problem = DataGenerator.generate_instance(
-            f"{name} Benchmark",
-            n_customers,
-            n_ifs,
-            vehicle_capacity=20 + n_customers // 5,
-            seed=42,
+            f"{name} Benchmark", n_customers, n_ifs, seed=42
         )
-
-        # Solve
         solver = ALNS(problem)
         solver.max_iterations = 300
-
         start_time = time.time()
         solution = solver.run(max_iterations=solver.max_iterations)
         end_time = time.time()
 
-        # Analyze
-        analyzer = PerformanceAnalyzer(problem)
-        analysis = analyzer.analyze_solution(solution)
+        results.append({
+            "name": name, "cost": solution.total_cost, "time": end_time - start_time
+        })
 
-        result = {
-            "name": name,
-            "customers": n_customers,
-            "ifs": n_ifs,
-            "cost": solution.total_cost,
-            "distance": solution.total_distance,
-            "vehicles": len(solution.routes),
-            "time": end_time - start_time,
-            "convergence": len(getattr(solver, "convergence_history", [])),
-        }
-
-        results.append(result)
-
-        print(f"  Solution Cost: {solution.total_cost:.2f}")
-        print(f"  Vehicles Used: {len(solution.routes)}")
-        print(f"  Time: {end_time - start_time:.2f}s")
-        print(f"  Unassigned: {len(solution.unassigned_customers)}")
-
-    # Display benchmark summary
+    # Display summary table
     print(f"\n" + "-" * 60)
     print("BENCHMARK SUMMARY")
     print("-" * 60)
-
-    print(
-        f"{'Instance':<10} {'Customers':<10} {'IFs':<5} {'Cost':<10} {'Vehicles':<10} {'Time(s)':<10} {'Convergence':<12}"
-    )
-    print("-" * 70)
-
     for result in results:
-        print(
-            f"{result['name']:<10} {result['customers']:<10} {result['ifs']:<5} "
-            f"{result['cost']:<10.2f} {result['vehicles']:<10} {result['time']:<10.2f} "
-            f"{result['convergence']:<12}"
-        )
+        print(f"  {result['name']:<10}: Cost={result['cost']:.2f}, Time={result['time']:.2f}s")
 
     return results
 
 
-def display_ascii_route_map(solution, problem):
-    """Display ASCII art route visualization in terminal"""
-    print("\n" + "=" * 80)
-    print("🗺️  ASCII ROUTE VISUALIZATION")
-    print("=" * 80)
-    
-    # Normalize coordinates for ASCII display
-    all_x = [problem.depot.x]
-    all_y = [problem.depot.y]
-    
-    for customer in problem.customers:
-        all_x.append(customer.x)
-        all_y.append(customer.y)
-    
-    for ifac in problem.intermediate_facilities:
-        all_x.append(ifac.x)
-        all_y.append(ifac.y)
-    
-    min_x, max_x = min(all_x), max(all_x)
-    min_y, max_y = min(all_y), max(all_y)
-    
-    width, height = 60, 20
-    
-    # Create empty grid
-    grid = [[' ' for _ in range(width)] for _ in range(height)]
-    
-    # Function to convert coordinates to grid position
-    def coord_to_grid(x, y):
-        grid_x = int((x - min_x) / (max_x - min_x) * (width - 1))
-        grid_y = int((y - min_y) / (max_y - min_y) * (height - 1))
-        return grid_x, height - 1 - grid_y  # Flip Y axis
-    
-    # Place depot (red)
-    depot_x, depot_y = coord_to_grid(problem.depot.x, problem.depot.y)
-    grid[depot_y][depot_x] = '🏢'
-    
-    # Place intermediate facilities (green)
-    for ifac in problem.intermediate_facilities:
-        if_x, if_y = coord_to_grid(ifac.x, ifac.y)
-        grid[if_y][if_x] = '🏭'
-    
-    # Place customers (blue)
-    for customer in problem.customers:
-        c_x, c_y = coord_to_grid(customer.x, customer.y)
-        grid[c_y][c_x] = '📍'
-    
-    # Draw routes with different symbols
-    route_symbols = ['➤', '→', '↗', '↘', '◆', '◇']
-    
-    for i, route in enumerate(solution.routes):
-        symbol = route_symbols[i % len(route_symbols)]
-        
-        for j in range(len(route.nodes) - 1):
-            current = route.nodes[j]
-            next_node = route.nodes[j + 1]
-            
-            curr_x, curr_y = coord_to_grid(current.x, current.y)
-            next_x, next_y = coord_to_grid(next_node.x, next_node.y)
-            
-            # Draw simple line between points
-            if abs(curr_x - next_x) > abs(curr_y - next_y):
-                # Horizontal line
-                start, end = (curr_x, next_x) if curr_x < next_x else (next_x, curr_x)
-                for x in range(start + 1, end):
-                    if 0 <= x < width and 0 <= curr_y < height:
-                        grid[curr_y][x] = symbol
-            else:
-                # Vertical line
-                start, end = (curr_y, next_y) if curr_y < next_y else (next_y, curr_y)
-                for y in range(start + 1, end):
-                    if 0 <= depot_x < width and 0 <= y < height:
-                        grid[y][depot_x] = symbol
-    
-    # Display grid with legend
-    print(f"Map Legend: 🏢=Depot, 🏭=IF, 📍=Customers, Route symbols show vehicle paths")
-    print(f"Map Area: {max_x - min_x:.0f} x {max_y - min_y:.0f} units")
-    print("\n" + "─" * (width + 4))
-    for row in grid:
-        print("│" + "".join(row) + "│")
-    print("─" * (width + 4))
-
-
-def display_detailed_route_analysis(solution, problem):
-    """Display detailed route analysis with ASCII art"""
-    print("\n" + "=" * 80)
-    print("📊 DETAILED ROUTE ANALYSIS")
-    print("=" * 80)
-    
-    for idx, route in enumerate(solution.routes):
-        print(f"\n🚛 Vehicle {idx + 1} Route Analysis:")
-        print("─" * 50)
-        
-        # Route sequence
-        print("📋 Route Sequence:")
-        sequence = " → ".join([f"{node.type.upper()}" for node in route.nodes])
-        print(f"   {sequence}")
-        
-        # Load profile
-        print(f"\n📦 Load Profile:")
-        current_load = 0
-        for i, node in enumerate(route.nodes):
-            if node.type == "customer":
-                current_load += node.demand
-                print(f"   {node.type.upper()}{node.id}: +{node.demand} (load: {current_load})")
-            elif node.type == "if":
-                current_load = 0  # Vehicle dumps waste
-                print(f"   {node.type.upper()}{node.id}: DUMP (load: {current_load})")
-        
-        # Efficiency metrics
-        print(f"\n📈 Efficiency Metrics:")
-        route_demand = sum(node.demand for node in route.nodes if node.type == 'customer')
-        utilization = route_demand / problem.vehicle_capacity
-        print(f"   Capacity Utilization: {utilization:.1%}")
-        print(f"   Distance: {route.total_distance:.2f} units")
-        print(f"   Time: {route.total_time:.2f} time units")
-        print(f"   Total Demand Served: {route_demand:.1f} units")
-        
-        # ASCII progress bar for utilization
-        bar_width = 20
-        filled = int(bar_width * utilization)
-        bar = "█" * filled + "░" * (bar_width - filled)
-        print(f"   Utilization Bar: |{bar}|")
-
-
-def create_progress_tracker():
-    """Create a simple progress tracker for ALNS iterations"""
-    class ProgressTracker:
-        def __init__(self, total_iterations):
-            self.total = total_iterations
-            self.current = 0
-            self.last_percentage = -1
-        
-        def update(self, iteration):
-            self.current = iteration
-            percentage = int((iteration / self.total) * 100)
-            
-            # Only update if percentage changed (reduces spam)
-            if percentage != self.last_percentage:
-                self.last_percentage = percentage
-                bar_width = 30
-                filled = int(bar_width * iteration / self.total)
-                bar = "█" * filled + "░" * (bar_width - filled)
-                print(f"\r🔄 ALNS Progress: |{bar}| {percentage}% ({iteration}/{self.total})", end="")
-                
-                if percentage == 100:
-                    print()  # New line when complete
-    
-    return ProgressTracker
-
-
-def run_visualization_demo(
-    solution, problem, save_plots=False, convergence_history=None
-):
-    """Enhanced visualization demonstration with ASCII art and detailed analysis"""
-    print("\n" + "=" * 80)
-    print("🎨 COMPREHENSIVE VISUALIZATION DEMONSTRATION")
-    print("=" * 80)
-
-    try:
-        # Display ASCII route map
-        display_ascii_route_map(solution, problem)
-        
-        # Display detailed route analysis
-        display_detailed_route_analysis(solution, problem)
-        
-        # Create visualizer for matplotlib plots
-        print(f"\n" + "=" * 80)
-        print("📊 MATPLOTLIB VISUALIZATION")
-        print("=" * 80)
-        
-        visualizer = RouteVisualizer(problem)
-
-        # Plot solution
-        print("Generating route visualization...")
-        fig = visualizer.plot_solution(solution, "Waste Collection Routes - ALNS Optimized")
-
-        if save_plots:
-            filename = f"routes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            fig.savefig(filename, dpi=300, bbox_inches="tight")
-            print(f"✅ Route plot saved as: {filename}")
-
-        # Plot convergence
-        print("Generating convergence analysis...")
-        conv_hist = convergence_history
-        if conv_hist is None:
-            solver_obj = getattr(solution, "solver", None)
-            conv_hist = (
-                getattr(solver_obj, "convergence_history", []) if solver_obj else []
-            )
-
-        conv_fig = visualizer.plot_convergence(conv_hist)
-
-        if save_plots:
-            conv_filename = f"convergence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            conv_fig.savefig(conv_filename, dpi=300, bbox_inches="tight")
-            print(f"✅ Convergence plot saved as: {conv_filename}")
-
-        # Performance summary
-        print(f"\n" + "=" * 80)
-        print("🎯 VISUALIZATION SUMMARY")
-        print("=" * 80)
-        print("✅ ASCII route map generated (terminal)")
-        print("✅ Detailed route analysis completed")
-        print("✅ Route visualization plotted")
-        if conv_hist:
-            print("✅ Convergence analysis generated")
-        print(f"✅ Total routes visualized: {len(solution.routes)}")
-        print("✅ All visualization complete!")
-
-    except ImportError as e:
-        print(f"⚠️ Matplotlib visualization not available: {e}")
-        print("📦 Install matplotlib: pip install matplotlib")
-        
-        # Fallback to ASCII-only visualization
-        print("\n" + "=" * 60)
-        print("🖥️  ASCII-ONLY VISUALIZATION MODE")
-        print("=" * 60)
-        display_ascii_route_map(solution, problem)
-        display_detailed_route_analysis(solution, problem)
-        
-    except Exception as e:
-        # Do not let visualization failures crash the run.
-        print(f"⚠️ Visualization failed: {e}")
-        print("🔄 Attempting ASCII fallback...")
-        try:
-            display_ascii_route_map(solution, problem)
-            display_detailed_route_analysis(solution, problem)
-            print("✅ ASCII visualization completed successfully!")
-        except Exception as e2:
-            print(f"❌ Complete visualization failure: {e2}")
-            print("📋 Basic route summary:")
-            for idx, route in enumerate(solution.routes):
-                print(f"   Route {idx+1}: {len([n for n in route.nodes if n.type == 'customer'])} customers, {route.total_distance:.2f} distance")
-
-
-def save_results(solution, problem, analysis=None, filename=None):
-    """Save results to file"""
-    if filename is None:
-        filename = f"solution_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-
-    save_solution_to_file(solution, filename)
-    print(f"Results saved to: {filename}")
-
-
-def display_ascii_route_map(solution, problem):
-    """Display ASCII art route visualization in terminal"""
-    print("\n" + "=" * 80)
-    print("🗺️  ASCII ROUTE VISUALIZATION")
-    print("=" * 80)
-    
-    # Normalize coordinates for ASCII display
-    all_x = [problem.depot.x]
-    all_y = [problem.depot.y]
-    
-    for customer in problem.customers:
-        all_x.append(customer.x)
-        all_y.append(customer.y)
-    
-    for ifac in problem.intermediate_facilities:
-        all_x.append(ifac.x)
-        all_y.append(ifac.y)
-    
-    min_x, max_x = min(all_x), max(all_x)
-    min_y, max_y = min(all_y), max(all_y)
-    
-    width, height = 60, 20
-    
-    # Create empty grid
-    grid = [[' ' for _ in range(width)] for _ in range(height)]
-    
-    # Function to convert coordinates to grid position
-    def coord_to_grid(x, y):
-        grid_x = int((x - min_x) / (max_x - min_x) * (width - 1))
-        grid_y = int((y - min_y) / (max_y - min_y) * (height - 1))
-        return grid_x, height - 1 - grid_y  # Flip Y axis
-    
-    # Place depot (red)
-    depot_x, depot_y = coord_to_grid(problem.depot.x, problem.depot.y)
-    grid[depot_y][depot_x] = '🏢'
-    
-    # Place intermediate facilities (green)
-    for ifac in problem.intermediate_facilities:
-        if_x, if_y = coord_to_grid(ifac.x, ifac.y)
-        grid[if_y][if_x] = '🏭'
-    
-    # Place customers (blue)
-    for customer in problem.customers:
-        c_x, c_y = coord_to_grid(customer.x, customer.y)
-        grid[c_y][c_x] = '📍'
-    
-    # Draw routes with different symbols
-    route_symbols = ['➤', '→', '↗', '↘', '◆', '◇']
-    
-    for i, route in enumerate(solution.routes):
-        symbol = route_symbols[i % len(route_symbols)]
-        
-        for j in range(len(route.nodes) - 1):
-            current = route.nodes[j]
-            next_node = route.nodes[j + 1]
-            
-            curr_x, curr_y = coord_to_grid(current.x, current.y)
-            next_x, next_y = coord_to_grid(next_node.x, next_node.y)
-            
-            # Draw simple line between points
-            if abs(curr_x - next_x) > abs(curr_y - next_y):
-                # Horizontal line
-                start, end = (curr_x, next_x) if curr_x < next_x else (next_x, curr_x)
-                for x in range(start + 1, end):
-                    if 0 <= x < width and 0 <= curr_y < height:
-                        grid[curr_y][x] = symbol
-            else:
-                # Vertical line
-                start, end = (curr_y, next_y) if curr_y < next_y else (next_y, curr_y)
-                for y in range(start + 1, end):
-                    if 0 <= depot_x < width and 0 <= y < height:
-                        grid[y][depot_x] = symbol
-    
-    # Display grid with legend
-    print(f"Map Legend: 🏢=Depot, 🏭=IF, 📍=Customers, Route symbols show vehicle paths")
-    print(f"Map Area: {max_x - min_x:.0f} x {max_y - min_y:.0f} units")
-    print("\n" + "─" * (width + 4))
-    for row in grid:
-        print("│" + "".join(row) + "│")
-    print("─" * (width + 4))
-
-
-def display_detailed_route_analysis(solution, problem):
-    """Display detailed route analysis with ASCII art"""
-    print("\n" + "=" * 80)
-    print("📊 DETAILED ROUTE ANALYSIS")
-    print("=" * 80)
-    
-    for idx, route in enumerate(solution.routes):
-        print(f"\n🚛 Vehicle {idx + 1} Route Analysis:")
-        print("─" * 50)
-        
-        # Route sequence
-        print("📋 Route Sequence:")
-        sequence = " → ".join([f"{node.type.upper()}" for node in route.nodes])
-        print(f"   {sequence}")
-        
-        # Load profile
-        print(f"\n📦 Load Profile:")
-        current_load = 0
-        for i, node in enumerate(route.nodes):
-            if node.type == "customer":
-                current_load += node.demand
-                print(f"   {node.type.upper()}{node.id}: +{node.demand} (load: {current_load})")
-            elif node.type == "if":
-                current_load = 0  # Vehicle dumps waste
-                print(f"   {node.type.upper()}{node.id}: DUMP (load: {current_load})")
-        
-        # Efficiency metrics
-        print(f"\n📈 Efficiency Metrics:")
-        route_demand = sum(node.demand for node in route.nodes if node.type == 'customer')
-        utilization = route_demand / problem.vehicle_capacity
-        print(f"   Capacity Utilization: {utilization:.1%}")
-        print(f"   Distance: {route.total_distance:.2f} units")
-        print(f"   Time: {route.total_time:.2f} time units")
-        print(f"   Total Demand Served: {route_demand:.1f} units")
-        
-        # ASCII progress bar for utilization
-        bar_width = 20
-        filled = int(bar_width * utilization)
-        bar = "█" * filled + "░" * (bar_width - filled)
-        print(f"   Utilization Bar: |{bar}|")
-
-
 def main():
-    """Main function with command-line interface"""
+    """
+    Main function that parses command-line arguments and runs the appropriate
+    demonstration or solver mode.
+    """
     parser = argparse.ArgumentParser(
         description="Municipal Waste Collection Route Optimization with ALNS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python main.py --demo basic           # Run basic demonstration
-  python main.py --demo comprehensive   # Run comprehensive demonstration
-  python main.py --demo benchmark       # Run benchmark demonstration
-  python main.py --demo comprehensive --video  # Run with video creation
-  python main.py --live --video         # Run live with video recording
-  python main.py --instance small.json  # Solve from instance file
-  python main.py --config config.json   # Use configuration file
-        """,
     )
 
+    # Define CLI arguments
     parser.add_argument(
         "--demo",
         choices=["basic", "comprehensive", "benchmark"],
-        help="Run demonstration mode",
+        help="Run a specific demonstration mode.",
     )
-
-    parser.add_argument("--instance", help="Path to instance file (JSON format)")
-
-    parser.add_argument("--config", help="Path to configuration file")
-
-    parser.add_argument(
-        "--iterations",
-        type=int,
-        default=200,
-        help="Number of ALNS iterations (default: 200)",
-    )
-
-    parser.add_argument(
-        "--save-plots", action="store_true", help="Save visualization plots to files"
-    )
-
-    parser.add_argument(
-        "--live", action="store_true", help="Enable live plotting during optimization"
-    )
-
-    parser.add_argument(
-        "--save-results", action="store_true", help="Save results to JSON file"
-    )
-
-    parser.add_argument(
-        "--create-config",
-        action="store_true",
-        help="Create configuration template file",
-    )
-
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    
-    parser.add_argument(
-        "--video", action="store_true", 
-        help="Create optimization video showing route evolution during ALNS"
-    )
+    parser.add_argument("--instance", help="Path to a problem instance file in JSON format.")
+    parser.add_argument("--iterations", type=int, default=200, help="Number of ALNS iterations.")
+    parser.add_argument("--save-plots", action="store_true", help="Save visualization plots to files.")
+    parser.add_argument("--live", action="store_true", help="Enable live plotting during optimization.")
+    parser.add_argument("--save-results", action="store_true", help="Save final solution to a JSON file.")
+    parser.add_argument("--video", action="store_true", help="Create a video of the optimization process.")
+    parser.add_argument("--verbose", action="store_true", help="Enable detailed output.")
 
     args = parser.parse_args()
 
-    print("=== Waste Collection Route Optimization ===")
-    print("Project: VRP with Intermediate Facilities using ALNS")
-    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    # Handle configuration creation
-    if args.create_config:
-        DataGenerator.create_config_template()
-        return
-
-    # Initialize placeholders
-    solution = None
-    problem = None
-    solver = None
-    analysis = None
-
-    # Handle different modes
+    # Run the selected mode
     if args.demo:
         if args.demo == "basic":
-            solution, problem, solver = run_basic_demonstration(
-                create_video=getattr(args, "video", False)
-            )
+            run_basic_demonstration(create_video=args.video, args=args)
         elif args.demo == "comprehensive":
-            result = run_comprehensive_demonstration(
-                live=getattr(args, "live", False), 
-                iterations=args.iterations,
-                create_video=getattr(args, "video", False),
-                args=args
+            run_comprehensive_demonstration(
+                live=args.live, iterations=args.iterations, create_video=args.video, args=args
             )
-            solution, problem, solver, analysis = result
-            if solution is None:
-                print(
-                    "Comprehensive demonstration did not produce a solution. Exiting."
-                )
-                return
         elif args.demo == "benchmark":
-            _results = run_benchmark_demonstration()
-            return
-
+            run_benchmark_demonstration()
     elif args.instance:
-        # Load instance from file
+        # Logic to load and run a specific instance file
         print(f"Loading instance from: {args.instance}")
         problem = DataGenerator.load_instance_from_file(args.instance)
         solver = ALNS(problem)
         solver.max_iterations = args.iterations
-
-        start_time = time.time()
         solution = solver.run(max_iterations=solver.max_iterations)
-        end_time = time.time()
-
-        print(f"Solution found in {end_time - start_time:.2f} seconds")
-        print(f"Cost: {solution.total_cost:.2f}")
-        print(f"Routes: {len(solution.routes)}")
-
+        # Further processing...
     else:
-        # Default: run comprehensive demonstration (respect --live if provided)
-        result = run_comprehensive_demonstration(
-            live=getattr(args, "live", False), 
-            iterations=args.iterations,
-            create_video=getattr(args, "video", False),
-            args=args
+        # Default action if no mode is specified
+        print("No mode specified. Running comprehensive demonstration by default.")
+        run_comprehensive_demonstration(
+            live=args.live, iterations=args.iterations, create_video=args.video, args=args
         )
-        solution, problem, solver, analysis = result
-        if solution is None:
-            print("Comprehensive demonstration did not produce a solution. Exiting.")
-            return
 
-    # Enhanced Visualization (only if we have a solution)
-    if solution is not None and (args.verbose or args.save_plots or args.demo):
-        try:
-            # Get convergence history for visualization
-            conv_hist = None
-            if solver is not None:
-                conv_hist = getattr(solver, "convergence_history", [])
-            
-            run_visualization_demo(solution, problem, save_plots=args.save_plots, convergence_history=conv_hist)
-        except Exception as e:
-            print(f"Visualization aborted: {e}")
-    elif solution is not None and args.demo == "comprehensive":
-        # Always show ASCII visualization for comprehensive demo
-        try:
-            display_ascii_route_map(solution, problem)
-            display_detailed_route_analysis(solution, problem)
-        except Exception as e:
-            print(f"ASCII visualization aborted: {e}")
-
-    # Save results (only if we have a solution)
-    if solution is not None and args.save_results:
-        try:
-            save_results(solution, problem, analysis)
-        except Exception as e:
-            print(f"Failed to save results: {e}")
-
-    # Final summary
     print(f"\n" + "=" * 60)
     print("DEMONSTRATION COMPLETE")
     print("=" * 60)
-    if solution is not None:
-        try:
-            print(f"Final Solution Cost: {solution.total_cost:.2f}")
-            print(f"Total Routes: {len(solution.routes)}")
-            print(f"Unassigned Customers: {len(solution.unassigned_customers)}")
-            print(
-                f"All customers assigned: {'Yes' if len(solution.unassigned_customers) == 0 else 'No'}"
-            )
-        except Exception:
-            print("Solution summary: (failed to display some fields)")
-    else:
-        print("No solution available to summarize.")
-
-    if args.verbose and solver is not None:
-        try:
-            print(f"Solver completed {solver.iteration} iterations")
-            print(
-                f"Best solution found at iteration: {len(getattr(solver, 'convergence_history', []))}"
-            )
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

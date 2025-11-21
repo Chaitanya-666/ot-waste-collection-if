@@ -1,3 +1,8 @@
+# Author: Chaitanya Shinde (231070066)
+#
+# This file contains the core implementation of the Adaptive Large Neighborhood
+# Search (ALNS) algorithm. It orchestrates the destroy and repair operators
+# to iteratively improve a solution for the Vehicle Routing Problem.
 """
 ALNS implementation (clean, self-contained) for VRP with Intermediate Facilities.
 
@@ -60,7 +65,7 @@ class ALNS:
         self.seed: int = 42
         random.seed(self.seed)
 
-        # Managers
+        # Managers for destroy and repair operators
         self.destroy_manager: DestroyOperatorManager = DestroyOperatorManager(
             self.problem
         )
@@ -72,7 +77,7 @@ class ALNS:
             op.name for op in self.repair_manager.operators
         ]
 
-        # Weights: simple equal initialization
+        # Weights for adaptive operator selection
         self.destroy_weights: Dict[str, float] = {
             name: 1.0 for name in self.destroy_operators
         }
@@ -80,7 +85,7 @@ class ALNS:
             name: 1.0 for name in self.repair_operators
         }
 
-        # Tracking scores & usage
+        # Tracking scores & usage for each operator
         self.destroy_scores: Dict[str, float] = {
             name: 0.0 for name in self.destroy_operators
         }
@@ -95,7 +100,7 @@ class ALNS:
         # Optional callback for live plotting (kept for compatibility)
         self.iteration_callback = None
 
-        # Learning / adaptation
+        # Learning rate for weight adaptation
         self.learning_rate: float = 0.1
         self.adaptive_period: int = 50
 
@@ -104,11 +109,12 @@ class ALNS:
     # -----------------------------
     def _generate_initial_solution(self) -> Solution:
         """
-        Greedy nearest-neighbour style initializer.
+        Generates an initial solution using a greedy nearest-neighbor heuristic.
 
-        Creates routes that start and end at the depot and inserts customers
-        until capacity would be exceeded, then starts a new route. Ensures
-        IFs are inserted when necessary using `enforce_if_visits`.
+        This method creates routes by iteratively adding the nearest customer to the
+        last added location, respecting vehicle capacity. It starts a new route
+        when the current one is full. It also ensures that intermediate facility
+        visits are added where necessary.
         """
         sol = Solution(self.problem)
 
@@ -118,7 +124,7 @@ class ALNS:
             sol.unassigned_customers = set(c.id for c in self.problem.customers)
             return sol
 
-        # copy list of customers
+        # copy list of customers to be served
         remaining = [c for c in self.problem.customers]
 
         # Start with a single empty route (depot present)
@@ -141,7 +147,7 @@ class ALNS:
         last_loc = self.problem.depot
 
         while remaining:
-            # pick nearest remaining customer
+            # Find the nearest unassigned customer
             nearest = min(
                 remaining, key=lambda c: self.problem.calculate_distance(last_loc, c)
             )
@@ -151,6 +157,7 @@ class ALNS:
                 for n in current_route.nodes
                 if getattr(n, "type", None) == "customer"
             )
+            # If adding the customer exceeds capacity, start a new route
             if (
                 cur_load + float(getattr(nearest, "demand", 0.0))
                 > self.problem.vehicle_capacity
@@ -177,7 +184,7 @@ class ALNS:
                 ok = False
 
             if not ok:
-                # rollback insertion
+                # rollback insertion if it leads to an infeasible route
                 current_route.nodes.pop(insert_pos)
                 current_route.loads = recalc_loads(current_route)
                 # close route and start a new one
@@ -194,7 +201,7 @@ class ALNS:
             last_loc = nearest
             remaining.remove(nearest)
 
-        # finalize routes
+        # Finalize all routes to ensure they are well-formed
         for r in sol.routes:
             if not r.nodes:
                 r.nodes = [self.problem.depot, self.problem.depot]
@@ -221,22 +228,23 @@ class ALNS:
 
     def run(self, max_iterations: Optional[int] = None) -> Solution:
         """
-        Main ALNS loop.
+        Executes the main ALNS optimization loop.
 
-        The implementation uses the DestroyOperatorManager and RepairOperatorManager
-        to perform destroy and repair steps. The acceptance criterion is a simple
-        simulated annealing rule. The method returns the best solution found.
+        This method initializes a solution, then iteratively destroys and repairs
+        it using the selected operators. It uses a simulated annealing-based
+        acceptance criterion to decide whether to accept a new solution.
+        Operator weights are adapted based on their performance.
         """
         if max_iterations:
             self.max_iterations = max_iterations
 
-        # Setup
+        # Setup timing, iteration count, and convergence tracking
         random.seed(self.seed)
         self.start_time = time.time()
         self.iteration = 0
         self.convergence_history = []
 
-        # initial solution
+        # Generate the initial solution
         self.current_solution = self._generate_initial_solution()
         if self.current_solution is None:
             self.current_solution = Solution(self.problem)
@@ -249,15 +257,15 @@ class ALNS:
                 self.best_solution
             )
 
-        # main loop
+        # Main optimization loop
         for it in range(self.max_iterations):
             self.iteration = it
 
-            # select operators
+            # Select destroy and repair operators based on adaptive weights
             destroy_name = self._select_destroy_operator()
             repair_name = self._select_repair_operator()
 
-            # apply destroy -> repair
+            # Apply operators to create a new candidate solution
             partial = self._destroy(self.current_solution, destroy_name)
             candidate = self._repair(partial, repair_name)
 
@@ -266,32 +274,32 @@ class ALNS:
                 candidate.calculate_metrics()
                 candidate.total_cost = self._calculate_total_cost(candidate)
 
-            # acceptance
+            # Decide whether to accept the new solution
             accept = False
             if candidate is not None:
                 accept = self._accept_solution(candidate)
 
             if accept and candidate is not None:
                 self.current_solution = candidate
-                # update best
+                # If candidate is better than the best found so far, update best
                 if candidate.total_cost < self.best_solution.total_cost:
                     self.best_solution = candidate.copy()
 
-            # tracking & adaptation
+            # Update operator scores and weights for adaptive learning
             self._update_operator_scores(destroy_name, repair_name, candidate)
             if it % self.adaptive_period == 0 and it > 0:
                 self._update_operator_weights()
 
-            # cooling
+            # Decrease temperature for simulated annealing
             self.temperature *= self.cooling_rate
 
-            # record convergence
+            # Record the cost of the best solution for convergence analysis
             try:
                 self.convergence_history.append(float(self.best_solution.total_cost))
             except Exception:
                 self.convergence_history.append(0.0)
 
-            # optional callback
+            # Execute callback for live plotting if provided
             if callable(self.iteration_callback):
                 try:
                     self.iteration_callback(it, self.best_solution)
@@ -456,7 +464,7 @@ class ALNS:
 
         if cand_cost < curr_cost:
             return True
-        # probabilistic acceptance
+        # probabilistic acceptance for worse solutions
         try:
             prob = math.exp(-(cand_cost - curr_cost) / max(self.temperature, 1e-6))
             return random.random() < prob
@@ -528,6 +536,6 @@ class ALNS:
         for k in self.repair_weights:
             self.repair_weights[k] = max(0.0, self.repair_weights[k]) / sr
 
-        # reset scores
+        # reset scores for the next adaptation period
         self.destroy_scores = {k: 0.0 for k in self.destroy_scores}
         self.repair_scores = {k: 0.0 for k in self.repair_scores}
