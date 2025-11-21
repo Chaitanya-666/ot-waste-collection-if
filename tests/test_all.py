@@ -20,8 +20,8 @@ This test suite covers:
 
 All tests use proper import paths relative to the project root.
 """
-import sys
 import os
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import unittest
