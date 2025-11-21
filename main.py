@@ -1,21 +1,64 @@
-# Author: Chaitanya Shinde (231070066)
-#
-# This file is the main entry point of the application. It handles command-line
-# argument parsing and orchestrates the different modes of operation, such as
-# running demonstrations or benchmarks.
 #!/usr/bin/env python3
 """
-OT Project: Municipal Waste Collection Modelling with Intermediate Facilities
-Enhanced Main Entry Point with CLI and Comprehensive Demonstration
+Municipal Waste Collection Route Optimization with Intermediate Facilities
+=======================================================================
 
-This enhanced main program provides:
+Authors:
+    - Chaitanya Shinde (231070066) - Core algorithm implementation and optimization
+    - Harsh Sharma (231070064) - Data generation, visualization, and utilities
+
+This module serves as the main entry point for the Municipal Waste Collection
+optimization system. It implements a Vehicle Routing Problem (VRP) with
+Intermediate Facilities using Adaptive Large Neighborhood Search (ALNS).
+
+The system is designed to:
+- Optimize waste collection routes for multiple vehicles
+- Handle intermediate facilities for waste disposal
+- Support various problem configurations and constraints
+- Provide visualization of optimization results
+- Enable benchmarking and performance analysis
+
+Key Features:
 - Command-line interface for flexible usage
-- Multiple demonstration modes
-- Comprehensive performance analysis
-- Visualization capabilities
-- Benchmarking functionality
-- Configuration file support
+- Multiple demonstration modes (basic, comprehensive, benchmark)
+- Real-time visualization of optimization progress
+- Performance metrics collection and reporting
+- Support for different problem instance types
+
+Example Usage:
+    # Run basic demonstration
+    python main.py --demo basic
+    
+    # Run comprehensive demonstration with visualization
+    python main.py --demo comprehensive --iterations 1000 --visualize
+    
+    # Run benchmark tests
+    python main.py --benchmark
 """
+
+# Standard library imports
+import argparse
+import sys
+import os
+import time
+from datetime import datetime
+from typing import Optional, Tuple, Dict, Any, List
+
+# Add the project's `src` directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
+# Import from the src package
+from src.problem import ProblemInstance, Location
+from src.alns import ALNS
+from src.data_generator import DataGenerator
+from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file
+
+# Optional video creation imports
+try:
+    from scripts.simple_video_creator import SimpleVideoCreator
+    VIDEO_CREATOR_AVAILABLE = True
+except ImportError:
+    VIDEO_CREATOR_AVAILABLE = False
 
 import argparse
 import sys
@@ -45,9 +88,26 @@ class OptimizationVideoTracker:
     """
     Tracks the state of the optimization process at different iterations
     to generate a video of the solution's evolution.
+    
+    This class captures the state of the solution at various points during the
+    optimization process, allowing for the creation of an animated visualization
+    showing how the solution improves over time.
+    
+    Attributes:
+        problem (ProblemInstance): The problem instance being solved
+        optimization_history (list): List of solution states at different iterations
+        current_best_cost (float): The best solution cost found so far
+        
+    Author: Chaitanya Shinde (231070066)
     """
     
     def __init__(self, problem: ProblemInstance):
+        """
+        Initialize the OptimizationVideoTracker.
+        
+        Args:
+            problem (ProblemInstance): The problem instance being optimized
+        """
         self.problem = problem
         self.optimization_history = []
         self.current_best_cost = float('inf')
@@ -133,7 +193,18 @@ class OptimizationVideoTracker:
 
 
 def create_sample_instance() -> ProblemInstance:
-    """Creates a small, hardcoded problem instance for basic demonstration."""
+    """
+    Creates a small, hardcoded problem instance for basic demonstration.
+    
+    This function creates a simple problem instance with a small number of
+    customers and a single intermediate facility, useful for testing and
+    demonstration purposes.
+    
+    Returns:
+        ProblemInstance: A configured problem instance with sample data
+        
+    Author: Chaitanya Shinde (231070066)
+    """
     print("Creating sample problem instance...")
 
     problem = ProblemInstance("Sample Instance")
@@ -162,7 +233,18 @@ def create_sample_instance() -> ProblemInstance:
 
 
 def create_comprehensive_instance() -> ProblemInstance:
-    """Creates a more complex, randomly generated instance for demonstration."""
+    """
+    Creates a more complex, randomly generated instance for demonstration.
+    
+    This function generates a problem instance with configurable parameters
+    for more realistic testing scenarios. The instance includes multiple
+    customers, intermediate facilities, and realistic constraints.
+    
+    Returns:
+        ProblemInstance: A randomly generated problem instance
+        
+    Author: Harsh Sharma (231070064)
+    """
     print("Creating comprehensive problem instance...")
 
     return DataGenerator.generate_instance(
@@ -178,8 +260,20 @@ def create_comprehensive_instance() -> ProblemInstance:
     )
 
 
-def run_basic_demonstration(create_video: bool = False, args=None):
-    """Runs a simple demonstration with a small, fixed problem instance."""
+def run_basic_demonstration(create_video: bool = False, args=None) -> None:
+    """
+    Runs a simple demonstration with a small, fixed problem instance.
+    
+    This function demonstrates the basic functionality of the optimization
+    algorithm using a small, hardcoded problem instance. It's useful for
+    quick verification of the system's functionality.
+    
+    Args:
+        create_video (bool): Whether to create an optimization video
+        args: Command-line arguments (optional)
+        
+    Author: Chaitanya Shinde (231070066)
+    """
     print("\n" + "=" * 60)
     print("BASIC DEMONSTRATION")
     print("=" * 60)
@@ -236,8 +330,19 @@ def run_comprehensive_demonstration(
     Optional[object], ProblemInstance, Optional[object], Optional[Dict[str, Any]]
 ]:
     """
-    Runs a more comprehensive demonstration with a generated problem,
-    detailed analysis, and optional live visualization.
+    Runs a comprehensive demonstration with detailed analysis and visualization.
+    
+    This function demonstrates the full capabilities of the optimization system,
+    including problem generation, optimization, visualization, and performance
+    analysis. It's suitable for in-depth testing and demonstration purposes.
+    
+    Args:
+        live (bool): Whether to show live visualization during optimization
+        iterations (int): Number of optimization iterations to perform
+        create_video (bool): Whether to create an optimization video
+        args: Command-line arguments (optional)
+        
+    Author: Harsh Sharma (231070064)
     """
     print("\n" + "=" * 60)
     print("COMPREHENSIVE DEMONSTRATION")
@@ -328,8 +433,16 @@ def run_comprehensive_demonstration(
     return solution, problem, solver, analysis
 
 
-def run_benchmark_demonstration():
-    """Runs the solver on a suite of problems of increasing size and reports performance."""
+def run_benchmark_demonstration() -> None:
+    """
+    Runs the solver on a suite of problems of increasing size and reports performance.
+    
+    This function executes a series of test cases with varying problem sizes
+    and configurations to measure the performance and scalability of the
+    optimization algorithm. It generates detailed performance reports.
+    
+    Author: Chaitanya Shinde (231070066)
+    """
     print("\n" + "=" * 60)
     print("BENCHMARK DEMONSTRATION")
     print("=" * 60)
@@ -366,10 +479,23 @@ def run_benchmark_demonstration():
     return results
 
 
-def main():
+def main() -> None:
     """
     Main function that parses command-line arguments and runs the appropriate
     demonstration or solver mode.
+    
+    This function serves as the entry point for the application. It handles
+    command-line argument parsing and delegates to the appropriate demonstration
+    or solver function based on the provided arguments.
+    
+    Command-line Arguments:
+        --demo [basic|comprehensive|benchmark]: Select demonstration mode
+        --iterations N: Number of optimization iterations (default: 500)
+        --visualize: Enable live visualization
+        --video: Generate optimization video
+        --output DIR: Output directory for results
+        
+    Author: Chaitanya Shinde (231070066), Harsh Sharma (231070064)
     """
     parser = argparse.ArgumentParser(
         description="Municipal Waste Collection Route Optimization with ALNS",
