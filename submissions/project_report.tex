@@ -1,0 +1,117 @@
+\documentclass[a4paper, 12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\geometry{a4paper, margin=1in}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{Municipal Waste Collection Route Optimization using ALNS}
+\author{Chaitanya Shinde (231070066) \and Harsh Sharma (231070064)}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report details a solution to the Vehicle Routing Problem with Intermediate Facilities (VRP-IF), specifically applied to municipal waste collection. We employ an Adaptive Large Neighborhood Search (ALNS) metaheuristic to find near-optimal routes that minimize total transportation costs while adhering to vehicle capacity and other operational constraints. The implemented system is capable of generating solutions for various problem sizes and provides visualization tools for analyzing the optimization process.
+\end{abstract}
+
+\section{Problem Statement}
+The Vehicle Routing Problem (VRP) is a well-known combinatorial optimization problem that involves finding the optimal set of routes for a fleet of vehicles to serve a given set of customers. The VRP with Intermediate Facilities (VRP-IF) is a variant where vehicles can visit intermediate facilities to unload and continue their routes. This is particularly relevant for municipal waste collection, where garbage trucks have limited capacity and must periodically visit disposal sites.
+
+The objective is to minimize the total cost, which is primarily a function of the total distance traveled by all vehicles. The solution must satisfy the following constraints:
+\begin{itemize}
+    \item Each customer must be visited exactly once.
+    \item All routes must start and end at the central depot.
+    \item The total demand collected by a vehicle on any sub-tour (between the depot and an IF, or an IF and the depot) must not exceed its capacity.
+    \item The number of vehicles used should not exceed the available fleet size.
+\end{itemize}
+
+\section{Approach: Adaptive Large Neighborhood Search (ALNS)}
+We chose the Adaptive Large Neighborhood Search (ALNS) metaheuristic due to its proven effectiveness in solving complex routing problems. ALNS is an extension of Large Neighborhood Search (LNS) that adaptively selects among a set of "destroy" and "repair" operators to explore a large neighborhood of the current solution.
+
+\subsection{Core Concepts}
+\begin{itemize}
+    \item \textbf{Destroy Operators:} These operators partially destroy the current solution by removing a number of customers from their routes. We have implemented several destroy operators, including:
+    \begin{itemize}
+        \item \textbf{Random Removal:} Removes customers at random.
+        \item \textbf{Worst Removal:} Removes customers that are most costly to serve.
+        \item \textbf{Shaw (Relatedness) Removal:} Removes customers that are similar in terms of location and demand.
+    \end{itemize}
+    \item \textbf{Repair Operators:} These operators take a partial solution (with unassigned customers) and reconstruct a complete, feasible solution. Our repair operators include:
+    \begin{itemize}
+        \item \textbf{Greedy Insertion:} Inserts customers into the position that results in the lowest additional cost.
+        \item \textbf{Regret Insertion:} A more sophisticated heuristic that considers the "regret" of not inserting a customer in its best position.
+    \end{itemize}
+    \item \textbf{Adaptive Weight Adjustment:} The core of ALNS is its ability to learn. The algorithm tracks the performance of each operator and adjusts their selection probabilities (weights) over time. Operators that lead to better solutions are chosen more frequently.
+    \item \textbf{Acceptance Criterion:} To avoid getting stuck in local optima, ALNS uses a simulated annealing-based acceptance criterion. This allows the algorithm to occasionally accept solutions that are worse than the current one, with the probability of acceptance decreasing over time as the "temperature" cools.
+\end{itemize}
+
+\subsection{Algorithm Flow}
+\begin{enumerate}
+    \item Generate an initial feasible solution using a simple greedy heuristic.
+    \item Set this initial solution as the current and best-known solution.
+    \item \textbf{Loop} for a fixed number of iterations:
+    \begin{enumerate}
+        \item Select a destroy and a repair operator based on their current weights.
+        \item Apply the destroy operator to the current solution to create a partial solution.
+        \item Apply the repair operator to the partial solution to create a new candidate solution.
+        \item Use the acceptance criterion to decide whether to accept the candidate solution as the new current solution.
+        \item If the candidate solution is better than the best-known solution, update the best-known solution.
+        \item Update the weights of the selected operators based on their performance in this iteration.
+        \item Decrease the temperature according to the cooling schedule.
+    \end{enumerate}
+    \item Return the best-known solution.
+\end{enumerate}
+
+\section{Implementation Details}
+The project is structured into several Python modules within the \texttt{src/} directory, promoting modularity and separation of concerns.
+
+\begin{itemize}
+    \item \texttt{problem.py}: Defines the data structures for the problem instance, including locations, customers, and the depot.
+    \item \texttt{solution.py}: Defines the \texttt{Solution} and \texttt{Route} classes, representing a complete solution to the problem.
+    \item \texttt{destroy\_operators.py} & \texttt{repair\_operators.py}: Implement the various destroy and repair heuristics.
+    \item \texttt{alns.py}: Contains the main ALNS solver logic, orchestrating the search process.
+    \item \texttt{data_generator.py}: A utility to generate random, solvable problem instances for testing.
+    \item \texttt{utils.py}: Contains helper functions for plotting, logging, and statistics.
+\end{itemize}
+
+The system also includes a comprehensive test suite (\texttt{comprehensive\_test\_suite.py}) that not only validates the correctness of the algorithm but also generates animated GIFs of the optimization process for each test case, providing a visual representation of the solver's performance.
+
+\section{Conclusion}
+The implemented ALNS solver provides a robust and flexible framework for solving the VRP-IF for municipal waste collection. The adaptive nature of the algorithm allows it to perform well on a variety of problem instances, and the modular design makes it easy to extend with new heuristics. The final deliverables, including detailed result sheets and optimization videos, demonstrate the effectiveness of our approach.
+
+\end{document}

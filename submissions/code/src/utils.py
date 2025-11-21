@@ -2,7 +2,7 @@
 Utilities for VRP-IF Solver
 ===========================
 
-Author: Harsh Sharma (231070064) - Utility functions and helper classes
+Author: Harsh Sharma (231070064), Chaitanya Shinde (231070066) - Utility functions and helper classes
 
 This module provides a collection of utility functions and helper classes
 that support the main VRP-IF solver. These utilities include:

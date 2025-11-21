@@ -185,7 +185,7 @@ class ALNS:
     # -----------------------------
     # Public API used by the tests
     # -----------------------------
-    def run(self, max_iterations: Optional[int] = None) -> Solution:
+    def run(self, max_iterations: Optional[int] = None, track_history: bool = False) -> Solution:
         """
         Execute the ALNS optimization process.
         
@@ -279,16 +279,17 @@ class ALNS:
                 self.convergence_history.append(0.0)
 
             # Track solution history for video generation if enabled
-            routes_for_video = []
-            for route in self.best_solution.routes:
-                routes_for_video.append([(node.x, node.y) for node in route.nodes])
-            
-            self.history.append({
-                'iteration': it,
-                'cost': self.current_solution.total_cost,
-                'best_cost': self.best_solution.total_cost,
-                'routes': routes_for_video
-            })
+            if track_history:
+                routes_for_video = []
+                for route in self.best_solution.routes:
+                    routes_for_video.append([(node.x, node.y) for node in route.nodes])
+                
+                self.history.append({
+                    'iteration': it,
+                    'cost': self.current_solution.total_cost,
+                    'best_cost': self.best_solution.total_cost,
+                    'routes': routes_for_video
+                })
 
             # Execute callback for live plotting if provided
             if callable(self.iteration_callback):
@@ -569,6 +570,7 @@ class ALNS:
             route.nodes = [self.problem.depot]
             current_load = 0
             
+            customers_in_route = []
             # Greedily add customers to the current route
             for customer in list(unassigned_customers):
                 # Check if adding the customer exceeds vehicle capacity
@@ -577,6 +579,7 @@ class ALNS:
                     route.nodes.append(customer)
                     current_load += customer.demand
                     unassigned_customers.remove(customer)
+                    customers_in_route.append(customer)
             
             # Complete the route by returning to the depot
             route.nodes.append(self.problem.depot)
@@ -584,9 +587,10 @@ class ALNS:
             # Add the newly created route to the solution
             solution.routes.append(route)
             
-            # This customer is now assigned
-            if customer in solution.unassigned_customers:
-                solution.unassigned_customers.remove(customer)
+            # These customers are now assigned
+            for customer in customers_in_route:
+                if customer.id in solution.unassigned_customers:
+                    solution.unassigned_customers.remove(customer.id)
 
         # Calculate all metrics for the initial solution
         solution.calculate_metrics()

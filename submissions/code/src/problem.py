@@ -22,7 +22,7 @@ Key Features:
 - Vehicle capacity and route constraints
 """
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 
 # Try to import numpy if available for distance matrix convenience; otherwise fall back to lists
 try:

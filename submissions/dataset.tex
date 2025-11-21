@@ -1,0 +1,110 @@
+\documentclass[a4paper, 12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\geometry{a4paper, margin=1in}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{Dataset Generation for VRP-IF}
+\author{Chaitanya Shinde (231070066) \and Harsh Sharma (231070064)}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document describes the data generation process for the Vehicle Routing Problem with Intermediate Facilities (VRP-IF). As no standard external dataset was used, a synthetic data generator was created to produce a wide range of solvable and realistic problem instances for testing and benchmarking the ALNS solver.
+\end{abstract}
+
+\section{Data Generation Mechanism}
+The data generation is handled by the \texttt{DataGenerator} class located in \texttt{src/data_generator.py}. This class is responsible for creating a \texttt{ProblemInstance} object populated with a depot, a specified number of customers, and a specified number of intermediate facilities, all with randomly generated attributes.
+
+The generation process is seeded to ensure that test instances are reproducible, which is crucial for consistent testing and debugging.
+
+\subsection{Core Functionality}
+The main entry point is the static method \texttt{generate_instance(...)}, which takes several parameters to control the characteristics of the generated problem.
+
+\begin{lstlisting}[language=Python]
+@staticmethod
+def generate_instance(
+    name: str,
+    n_customers: int,
+    n_ifs: int,
+    area_size: int = 100,
+    vehicle_capacity: int = 50,
+    demand_range: Tuple[int, int] = (5, 15),
+    cluster_factor: float = 0.0,
+    seed: int = 42
+) -> ProblemInstance:
+    # ... implementation ...
+\end{lstlisting}
+
+\subsection{Parameters}
+\begin{itemize}
+    \item \texttt{name}: A string identifier for the instance.
+    \item \texttt{n_customers}: The number of customers to generate.
+    \item \texttt{n_ifs}: The number of intermediate facilities to generate.
+    \item \texttt{area_size}: The size of the square area (e.g., 100x100) in which locations are placed.
+    \item \texttt{vehicle_capacity}: The capacity of each vehicle.
+    \item \texttt{demand_range}: A tuple specifying the minimum and maximum demand for each customer.
+    \item \texttt{cluster_factor}: A float between 0.0 and 1.0 that controls the geographic distribution of customers. A factor of 0.0 results in a uniform distribution, while a factor closer to 1.0 results in more tightly clustered customers.
+    \item \texttt{seed}: An integer used to seed the random number generator for reproducibility.
+\end{itemize}
+
+\section{Location Generation}
+\begin{itemize}
+    \item \textbf{Depot:} A single depot is created, typically at or near the center of the defined area.
+    \item \textbf{Customers:} Customer locations are generated randomly within the area. If a \texttt{cluster_factor} is provided, a number of cluster centers are first generated, and customers are then placed in a normal distribution around these centers. This allows for the creation of more realistic, clustered problem instances. Each customer is assigned a random demand within the specified \texttt{demand_range}.
+    \item \textbf{Intermediate Facilities (IFs):} IF locations are also generated randomly within the area, typically distributed to provide good coverage.
+\end{itemize}
+
+\section{Usage}
+The data generator is used extensively in the test suites (\texttt{comprehensive_test_suite.py} and \texttt{tests/test_all.py}) to create a variety of problem instances for validating the solver's correctness and performance across different scales and complexities.
+
+\begin{lstlisting}[language=Python]
+from src.data_generator import DataGenerator
+
+# Generate a medium-sized problem instance
+problem = DataGenerator.generate_instance(
+    name="Medium-Test",
+    n_customers=15,
+    n_ifs=2,
+    seed=123
+)
+
+print(f"Generated problem with {len(problem.customers)} customers.")
+\end{lstlisting}
+
+This on-the-fly data generation capability was a core design choice, as it allows for flexible and comprehensive testing without reliance on external data files.
+
+\end{document}

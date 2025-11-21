@@ -33,7 +33,7 @@ from src.destroy_operators import RandomRemoval
 from src.problem import ProblemInstance, Location
 from src.repair_operators import GreedyInsertion
 from src.solution import Solution, Route
-from src.utils import RouteVisualizer, PerformanceAnalyzer
+from src.utils import plot_solution, calculate_statistics
 
 
 class TestProblemInstance(unittest.TestCase):
@@ -172,19 +172,18 @@ class TestUtilities(unittest.TestCase):
         solver = ALNS(self.problem)
         self.solution = solver.run(max_iterations=10)
 
-    def test_performance_analyzer(self):
-        """Test that the performance analyzer returns a valid dictionary."""
-        analyzer = PerformanceAnalyzer(self.problem)
-        analysis = analyzer.analyze_solution(self.solution)
-        self.assertIn("total_cost", analysis)
-        self.assertIn("efficiency_metrics", analysis)
+    def test_calculate_statistics(self):
+        """Test that the statistics calculation returns a valid dictionary."""
+        data = [r.total_distance for r in self.solution.routes]
+        stats = calculate_statistics(data)
+        self.assertIn("mean", stats)
+        self.assertIn("std_dev", stats)
 
     @patch("matplotlib.pyplot.show")
-    def test_route_visualization(self, mock_show):
-        """Test that the route visualizer generates a plot without errors."""
-        visualizer = RouteVisualizer(self.problem)
-        fig = visualizer.plot_solution(self.solution)
-        self.assertIsNotNone(fig)
+    def test_plot_solution(self, mock_show):
+        """Test that the solution plotter generates a plot without errors."""
+        plot_solution(self.solution)
+        mock_show.assert_called_once()
 
 
 class TestIntegration(unittest.TestCase):
@@ -200,11 +199,11 @@ class TestIntegration(unittest.TestCase):
         solver = ALNS(problem)
         solver.max_iterations = 100
         solution = solver.run()
-        analyzer = PerformanceAnalyzer(problem)
-        analysis = analyzer.analyze_solution(solution)
-
+        
+        # Instead of an analyzer class, we can just check the solution properties
         self.assertEqual(len(solution.unassigned_customers), 0)
-        self.assertGreater(analysis["total_cost"], 0)
+        self.assertGreater(solution.total_cost, 0)
+
 
 
 if __name__ == "__main__":

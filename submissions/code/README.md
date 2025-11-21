@@ -455,8 +455,8 @@ This project was developed with a 50-50 contribution split between the two autho
 
 | Author | ID | Role | Key Responsibilities & Modules |
 | :--- | :--- | :--- | :--- |
-| **Chaitanya Shinde** | 231070066 | Core Algorithm and Application | `src/alns.py`, `src/problem.py`, `src/solution.py`, `src/destroy_operators.py`, `src/repair_operators.py`, `main.py`, `comprehensive_test_suite.py`, `test_runner.py` |
-| **Harsh Sharma** | 231070064 | Data, Visualization, and Utilities | `src/data_generator.py`, `src/utils.py`, `simple_video_creator.py`, `optimization_video_creator.py`, `alns_video_integration.py`, `setup_and_demo.py`, `verify_project.py`, `src/benchmarking.py`, `src/enhanced_construction.py`, `src/enhanced_validator.py`, `tests/test_all.py`, `test_alns_functionality.py`, `test_video_integration.py` |
+| **Chaitanya Shinde** | 231070066 | Core Algorithm and Application | `src/alns.py`, `src/destroy_operators.py`, `src/repair_operators.py`, `src/solution.py`, `main.py`, `comprehensive_test_suite.py` |
+| **Harsh Sharma** | 231070064 | Data, Visualization, and Utilities | `src/problem.py`, `src/data_generator.py`, `src/utils.py`, `scripts/optimization_video_creator.py`, `scripts/setup_and_demo.py`, `tests/test_all.py` |
 
 ---
 
