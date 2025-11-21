@@ -100,6 +100,9 @@ class ALNS:
         # Optional callback for live plotting (kept for compatibility)
         self.iteration_callback = None
 
+        # History tracking for video generation
+        self.history = []
+
         # Learning rate for weight adaptation
         self.learning_rate: float = 0.1
         self.adaptive_period: int = 50
@@ -226,7 +229,7 @@ class ALNS:
 
         return sol
 
-    def run(self, max_iterations: Optional[int] = None) -> Solution:
+    def run(self, max_iterations: Optional[int] = None, track_history: bool = False) -> Solution:
         """
         Executes the main ALNS optimization loop.
 
@@ -243,6 +246,7 @@ class ALNS:
         self.start_time = time.time()
         self.iteration = 0
         self.convergence_history = []
+        self.history = []
 
         # Generate the initial solution
         self.current_solution = self._generate_initial_solution()
@@ -298,6 +302,19 @@ class ALNS:
                 self.convergence_history.append(float(self.best_solution.total_cost))
             except Exception:
                 self.convergence_history.append(0.0)
+
+            # Track history for video generation
+            if track_history:
+                routes_for_video = []
+                for route in self.best_solution.routes:
+                    routes_for_video.append([(node.x, node.y) for node in route.nodes])
+                
+                self.history.append({
+                    'iteration': it,
+                    'cost': self.current_solution.total_cost,
+                    'best_cost': self.best_solution.total_cost,
+                    'routes': routes_for_video
+                })
 
             # Execute callback for live plotting if provided
             if callable(self.iteration_callback):

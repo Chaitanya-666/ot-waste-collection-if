@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from test_runner import CustomTestRunner
+from simple_video_creator import SimpleVideoCreator
 
 class TestALNSVRPBasic(unittest.TestCase):
     """Test basic ALNS VRP functionality without video creation"""
@@ -79,10 +80,20 @@ class TestALNSVRPHyperparameterTuning(unittest.TestCase):
         solver.temperature_initial = 1000
         solver.cooling_rate = 0.995
         
-        solution = solver.run()
+        solution = solver.run(track_history=True)
         
         self.assertIsNotNone(solution)
         self.assertGreater(solution.total_cost, 0)
+
+        # Create video
+        creator = SimpleVideoCreator(output_dir=".")
+        creator.create_optimization_animation(
+            solver.history,
+            problem.get_customer_data(),
+            (problem.depot.x, problem.depot.y),
+            [(ifac.x, ifac.y) for ifac in problem.intermediate_facilities],
+            output_filename="submissions/hyperparameter_fast_output.gif"
+        )
 
     def test_medium_problem_solve_balanced(self):
         """Hyperparameter Test (Balanced): 100 iter, 5000 temp, 0.99 cool"""
@@ -98,10 +109,20 @@ class TestALNSVRPHyperparameterTuning(unittest.TestCase):
         solver.temperature_initial = 5000
         solver.cooling_rate = 0.99
         
-        solution = solver.run()
+        solution = solver.run(track_history=True)
         
         self.assertIsNotNone(solution)
         self.assertGreater(solution.total_cost, 0)
+
+        # Create video
+        creator = SimpleVideoCreator(output_dir=".")
+        creator.create_optimization_animation(
+            solver.history,
+            problem.get_customer_data(),
+            (problem.depot.x, problem.depot.y),
+            [(ifac.x, ifac.y) for ifac in problem.intermediate_facilities],
+            output_filename="submissions/hyperparameter_balanced_output.gif"
+        )
 
     def test_medium_problem_solve_deep(self):
         """Hyperparameter Test (Deep): 200 iter, 10000 temp, 0.985 cool"""
@@ -117,10 +138,20 @@ class TestALNSVRPHyperparameterTuning(unittest.TestCase):
         solver.temperature_initial = 10000
         solver.cooling_rate = 0.985
         
-        solution = solver.run()
+        solution = solver.run(track_history=True)
         
         self.assertIsNotNone(solution)
         self.assertGreater(solution.total_cost, 0)
+
+        # Create video
+        creator = SimpleVideoCreator(output_dir=".")
+        creator.create_optimization_animation(
+            solver.history,
+            problem.get_customer_data(),
+            (problem.depot.x, problem.depot.y),
+            [(ifac.x, ifac.y) for ifac in problem.intermediate_facilities],
+            output_filename="submissions/hyperparameter_deep_output.gif"
+        )
 
 class TestALNSVRPVideoCreation(unittest.TestCase):
     """Test video creation functionality"""
@@ -161,17 +192,29 @@ class TestALNSVRPVideoCreation(unittest.TestCase):
 def generate_results_summary(result):
     """Generates a Markdown summary of the test results."""
     
-    summary_path = "test_results_summary.md"
+    summary_path = "result_sheet.md"
     
     with open(summary_path, "w") as f:
-        f.write("# Test Results Summary\n\n")
-        f.write("| Test Case | Description | Status | Time |\n")
-        f.write("|-----------|-------------|--------|------|\n")
+        f.write("# Result Sheet\n\n")
+        f.write("| Test Case | Description | Status | Time | Outputs |\n")
+        f.write("|-----------|-------------|--------|------|---------|\n")
         
         for res in result.test_results:
-            f.write(f"| {res['name']} | {res['description']} | {res['status']} | {res['time']} |\n")
+            output_file = ""
+            if "fast" in res['name']:
+                output_file = "hyperparameter_fast_output.gif"
+            elif "balanced" in res['name']:
+                output_file = "hyperparameter_balanced_output.gif"
+            elif "deep" in res['name']:
+                output_file = "hyperparameter_deep_output.gif"
             
-    print(f"\n📊 Test results summary saved to: {summary_path}")
+            output_link = ""
+            if output_file and os.path.exists(f"submissions/{output_file}"):
+                output_link = f"[{output_file}](submissions/{output_file})"
+
+            f.write(f"| {res['name']} | {res['description']} | {res['status']} | {res['time']} | {output_link} |\n")
+            
+    print(f"\n📊 Result sheet saved to: {summary_path}")
 
 def run_test_suite():
     """Run the complete test suite with the custom runner."""

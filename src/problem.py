@@ -178,3 +178,7 @@ class ProblemInstance:
                 current_load = 0
 
         return True, "Route is feasible"
+
+    def get_customer_data(self) -> dict:
+        """Returns a dictionary of customer locations and their demands."""
+        return {(c.x, c.y): c.demand for c in self.customers}
