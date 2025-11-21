@@ -1,12 +1,14 @@
 # Result Sheet
 
-| Test Case | Description | Status | Time | Outputs |
-|-----------|-------------|--------|------|---------|
-| __main__.TestALNSVRPBasic.test_basic_import | Test that all modules can be imported successfully | ✅ Pass | 0.1351s |  |
-| __main__.TestALNSVRPBasic.test_data_generator_small | Test data generator with small instance | ✅ Pass | 0.0009s |  |
-| __main__.TestALNSVRPBasic.test_problem_creation | Test problem instance creation | ✅ Pass | 0.0001s |  |
-| __main__.TestALNSVRPHyperparameterTuning.test_medium_problem_solve_balanced | Hyperparameter Test (Balanced): 100 iter, 5000 temp, 0.99 cool | ✅ Pass | 116.7833s | [hyperparameter_balanced_output.gif](submissions/hyperparameter_balanced_output.gif) |
-| __main__.TestALNSVRPHyperparameterTuning.test_medium_problem_solve_deep | Hyperparameter Test (Deep): 200 iter, 10000 temp, 0.985 cool | ✅ Pass | 149.6327s | [hyperparameter_deep_output.gif](submissions/hyperparameter_deep_output.gif) |
-| __main__.TestALNSVRPHyperparameterTuning.test_medium_problem_solve_fast | Hyperparameter Test (Fast): 50 iter, 1000 temp, 0.995 cool | ✅ Pass | 36.0839s | [hyperparameter_fast_output.gif](submissions/hyperparameter_fast_output.gif) |
-| __main__.TestALNSVRPVideoCreation.test_video_creation_with_sample_data | Test actual video creation with sample optimization data | ✅ Pass | 1.3191s |  |
-| __main__.TestALNSVRPVideoCreation.test_video_creator_import | Test that video creator can be imported | ✅ Pass | 0.0002s |  |
+| Test Case ID | Parameters | Hyperparameters | Expected Result | Obtained Result | Optimal? | Status | Time | Outputs |
+|--------------|------------|-----------------|-----------------|-----------------|----------|--------|------|---------|
+| test_01_tiny_fast | name: Tiny-Fast<br>n_customers: 5<br>n_ifs: 1<br>seed: 42 | max_iterations: 20<br>temperature_initial: 500<br>cooling_rate: 0.99 | <= 300 | 120.05 | Yes | ✅ Pass | 0.02s | [test_01_tiny_fast.gif](submissions/test_01_tiny_fast.gif) |
+| test_02_tiny_deep | name: Tiny-Deep<br>n_customers: 5<br>n_ifs: 1<br>seed: 42 | max_iterations: 100<br>temperature_initial: 1000<br>cooling_rate: 0.98 | <= 250 | 120.05 | Yes | ✅ Pass | 0.17s | [test_02_tiny_deep.gif](submissions/test_02_tiny_deep.gif) |
+| test_03_small_fast | name: Small-Fast<br>n_customers: 10<br>n_ifs: 2<br>seed: 42 | max_iterations: 50<br>temperature_initial: 1000<br>cooling_rate: 0.99 | <= 600 | 183.08 | Yes | ✅ Pass | 0.18s | [test_03_small_fast.gif](submissions/test_03_small_fast.gif) |
+| test_04_small_deep | name: Small-Deep<br>n_customers: 10<br>n_ifs: 2<br>seed: 42 | max_iterations: 200<br>temperature_initial: 5000<br>cooling_rate: 0.985 | <= 500 | 179.02 | Yes | ✅ Pass | 0.41s | [test_04_small_deep.gif](submissions/test_04_small_deep.gif) |
+| test_05_medium_fast | name: Medium-Fast<br>n_customers: 15<br>n_ifs: 2<br>seed: 42 | max_iterations: 100<br>temperature_initial: 2000<br>cooling_rate: 0.99 | <= 800 | 356.01 | Yes | ✅ Pass | 0.62s | [test_05_medium_fast.gif](submissions/test_05_medium_fast.gif) |
+| test_06_medium_deep | name: Medium-Deep<br>n_customers: 15<br>n_ifs: 2<br>seed: 42 | max_iterations: 300<br>temperature_initial: 10000<br>cooling_rate: 0.985 | <= 700 | 356.01 | Yes | ✅ Pass | 2.76s | [test_06_medium_deep.gif](submissions/test_06_medium_deep.gif) |
+| test_07_large_fast | name: Large-Fast<br>n_customers: 25<br>n_ifs: 3<br>seed: 42 | max_iterations: 150<br>temperature_initial: 5000<br>cooling_rate: 0.99 | <= 1200 | 476.25 | Yes | ✅ Pass | 2.37s | [test_07_large_fast.gif](submissions/test_07_large_fast.gif) |
+| test_08_large_deep | name: Large-Deep<br>n_customers: 25<br>n_ifs: 3<br>seed: 42 | max_iterations: 500<br>temperature_initial: 20000<br>cooling_rate: 0.985 | <= 1000 | 476.25 | Yes | ✅ Pass | 11.01s | [test_08_large_deep.gif](submissions/test_08_large_deep.gif) |
+| test_09_clustered_data | name: Clustered<br>n_customers: 20<br>n_ifs: 2<br>seed: 42<br>cluster_factor: 0.8 | max_iterations: 300<br>temperature_initial: 10000<br>cooling_rate: 0.99 | <= 900 | 611.73 | Yes | ✅ Pass | 3.76s | [test_09_clustered_data.gif](submissions/test_09_clustered_data.gif) |
+| test_10_uniform_data | name: Uniform<br>n_customers: 20<br>n_ifs: 2<br>seed: 42<br>cluster_factor: 0.0 | max_iterations: 300<br>temperature_initial: 10000<br>cooling_rate: 0.99 | <= 1100 | 522.95 | Yes | ✅ Pass | 6.07s | [test_10_uniform_data.gif](submissions/test_10_uniform_data.gif) |
