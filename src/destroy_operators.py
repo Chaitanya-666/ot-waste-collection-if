@@ -1,22 +1,70 @@
-# Author: Chaitanya Shinde (231070066)
-#
-# This file implements the "destroy" operators for the ALNS algorithm. These
-# operators are responsible for taking a complete solution and removing a
-# subset of customers from it to create a partial solution, which can then be
-# "repaired" in a new way.
 """
-Destroy operators for ALNS in VRP with Intermediate Facilities
+Destroy Operators for Adaptive Large Neighborhood Search (ALNS)
+=============================================================
+
+Author: Chaitanya Shinde (231070066) - Core algorithm implementation
+
+This module implements the destroy operators for the Adaptive Large Neighborhood
+Search (ALNS) algorithm used to solve the Vehicle Routing Problem with
+Intermediate Facilities (VRP-IF). Destroy operators are responsible for taking
+a complete solution and removing a subset of customers to create a partial
+solution, which can then be "repaired" in a new way.
+
+Key Features:
+- Multiple destroy strategies with different characteristics
+- Adaptive operator selection based on performance
+- Support for both random and guided destruction
+- Efficient implementation for large problem instances
+
+Classes:
+    - DestroyOperator: Base class for all destroy operators
+    - RandomRemoval: Removes customers randomly
+    - WorstRemoval: Removes most expensive customers to serve
+    - ShawRemoval: Removes similar customers based on multiple criteria
+    - RouteRemoval: Removes entire routes
+    - RelatedRemoval: Removes geographically clustered customers
+    - DestroyOperatorManager: Manages operator selection and application
 """
 
 import random
 import math
-from typing import List, Set, Dict, Any
+from typing import List, Set, Dict, Any, Tuple, Optional, Union
+from dataclasses import dataclass, field
+
 from .solution import Solution, Route
 from .problem import ProblemInstance, Location
 
 
 class DestroyOperator:
-    """Base class for all destroy operators."""
+    """
+    Abstract base class for all destroy operators in the ALNS algorithm.
+    
+    Destroy operators take a complete solution and remove a subset of customers,
+    creating a partial solution that needs to be repaired. This allows the
+    algorithm to explore different regions of the solution space.
+    
+    Attributes:
+        name (str): Identifier for the operator
+        performance_score (float): Tracks the operator's performance
+        usage_count (int): Number of times the operator has been used
+        
+    Note:
+        - Subclasses must implement the `apply` method
+        - Performance tracking is used for adaptive operator selection
+        
+    Author: Chaitanya Shinde (231070066)
+    """
+    
+    def __init__(self, name: str):
+        """
+        Initialize a new destroy operator.
+        
+        Args:
+            name: Unique identifier for the operator
+            
+        Note:
+            - Initializes performance tracking attributes
+        """
 
     def __init__(self, name: str):
         self.name = name
@@ -25,26 +73,73 @@ class DestroyOperator:
         self.usage_count = 0
 
     def apply(self, solution: Solution, removal_count: int) -> Solution:
-        """Applies the destroy operator to a solution, returning a partial solution."""
-        raise NotImplementedError
+        """
+        Apply the destroy operator to a solution.
+        
+        Args:
+            solution: The current solution to be modified
+            removal_count: Number of customers to remove
+            
+        Returns:
+            Solution: A new solution with customers removed
+            
+        Raises:
+            NotImplementedError: If the method is not implemented by a subclass
+            
+        Note:
+            - Must be implemented by all concrete subclasses
+            - Should not modify the original solution
+        """
+        raise NotImplementedError("Subclasses must implement apply()")
 
     def get_performance_score(self) -> float:
-        """Calculates the average performance score of this operator."""
+        """
+        Calculate the average performance score of this operator.
+        
+        Returns:
+            float: The average score, or 0 if the operator hasn't been used
+            
+        Note:
+            - Used by the adaptive weight adjustment mechanism
+            - Higher scores indicate better performance
+        """
         if self.usage_count == 0:
             return 0.0
         return self.performance_score / self.usage_count
 
-    def update_performance(self, score: float):
-        """Updates the operator's performance score based on a recent run."""
+    def update_performance(self, score: float) -> None:
+        """
+        Update the operator's performance score.
+        
+        Args:
+            score: Performance score from the last run (higher is better)
+            
+        Note:
+            - Called by the ALNS algorithm after each iteration
+            - Used to adaptively adjust operator selection probabilities
+        """
         self.performance_score += score
         self.usage_count += 1
 
 
 class RandomRemoval(DestroyOperator):
     """
-    Removes a specified number of customers from the solution at random.
-    This is the simplest destroy operator and helps to diversify the search by
-    introducing random changes to the solution.
+    Random Removal Destroy Operator
+    
+    Removes a random selection of customers from the solution. This operator
+    helps to diversify the search by introducing random changes that allow
+    the algorithm to escape local optima.
+    
+    Key Features:
+    - Completely random selection of customers
+    - Preserves solution structure while allowing exploration
+    - Effective at maintaining diversity in the search
+    
+    Example:
+        >>> operator = RandomRemoval()
+        >>> partial_solution = operator.apply(solution, removal_count=5)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self):
@@ -113,10 +208,23 @@ class RandomRemoval(DestroyOperator):
 
 class WorstRemoval(DestroyOperator):
     """
-    Removes customers that are the most expensive to serve. The cost is
-    calculated as the savings in distance if the customer were removed.
-    This operator focuses on removing "bad" parts of the solution, with the
-    hope that the repair operator can find a better placement.
+    Worst Removal Destroy Operator
+    
+    Removes customers that are the most expensive to serve, where cost is
+    calculated as the marginal increase in route distance if the customer
+    were removed. This operator focuses on identifying and removing
+    inefficient parts of the solution.
+    
+    Key Features:
+    - Targets the most expensive customers first
+    - Uses a roulette wheel selection to balance greediness and diversity
+    - Helps to improve solution quality by focusing on problematic areas
+    
+    Example:
+        >>> operator = WorstRemoval()
+        >>> partial_solution = operator.apply(solution, removal_count=5)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self):
@@ -204,9 +312,27 @@ class WorstRemoval(DestroyOperator):
 
 class ShawRemoval(DestroyOperator):
     """
-    Removes customers that are "similar" to each other. Similarity is based on
-    a combination of geographic proximity, demand, and service time. This helps
-    to destroy and rebuild entire regions of the solution.
+    Shaw Removal Destroy Operator
+    
+    Removes customers that are "similar" based on multiple criteria including
+    geographic proximity, demand, and service time. This operator is based on
+    the work of Shaw (1998) and is effective at identifying related customers
+    that might be better served together.
+    
+    Key Features:
+    - Multi-criteria similarity measure
+    - Balances between relatedness and randomness
+    - Effective for clustered problem instances
+    
+    Reference:
+        Shaw, P. (1998). Using constraint programming and local search
+        methods to solve vehicle routing problems. CP-98, 417-431.
+        
+    Example:
+        >>> operator = ShawRemoval()
+        >>> partial_solution = operator.apply(solution, removal_count=5)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self):
@@ -301,9 +427,22 @@ class ShawRemoval(DestroyOperator):
 
 class RouteRemoval(DestroyOperator):
     """
+    Route Removal Destroy Operator
+    
     Removes one or more entire routes from the solution. This is a large-scale
     operator that can lead to significant changes in the solution structure,
-    allowing the search to escape local optima.
+    making it particularly effective for escaping deep local optima.
+    
+    Key Features:
+    - Removes complete routes rather than individual customers
+    - More disruptive than customer-level operators
+    - Effective for exploring different route structures
+    
+    Example:
+        >>> operator = RouteRemoval()
+        >>> partial_solution = operator.apply(solution, removal_count=2)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self):
@@ -349,9 +488,22 @@ class RouteRemoval(DestroyOperator):
 
 class RelatedRemoval(DestroyOperator):
     """
-    Removes customers that are geographically clustered together. This is similar
-    to Shaw removal but focuses only on spatial proximity, making it a more
-    geographically-focused destroy operator.
+    Related Removal Destroy Operator
+    
+    Removes customers that are geographically clustered together, focusing
+    specifically on spatial relationships. This operator is similar to Shaw
+    removal but with a stronger emphasis on geographic proximity.
+    
+    Key Features:
+    - Focuses on spatial clustering of customers
+    - Uses a distance-based similarity measure
+    - Effective for problems with strong geographic patterns
+    
+    Example:
+        >>> operator = RelatedRemoval()
+        >>> partial_solution = operator.apply(solution, removal_count=5)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self):
@@ -454,9 +606,28 @@ class RelatedRemoval(DestroyOperator):
 
 class DestroyOperatorManager:
     """
-    Manages the selection and application of destroy operators. It uses an
-    adaptive weighting mechanism to select operators that have been more
-    successful in finding good solutions.
+    Destroy Operator Manager
+    
+    Manages the selection and application of destroy operators using an adaptive
+    weighting mechanism. The manager tracks the performance of each operator and
+    adjusts their selection probabilities accordingly.
+    
+    Key Features:
+    - Maintains a set of destroy operators
+    - Implements adaptive weight adjustment
+    - Provides operator selection based on performance
+    
+    Attributes:
+        problem: The problem instance being solved
+        operators: Dictionary of available destroy operators
+        weights: Current selection weights for each operator
+        
+    Example:
+        >>> manager = DestroyOperatorManager(problem)
+        >>> operator = manager.select_operator()
+        >>> solution = manager.apply_operator(solution, operator, 5)
+        
+    Author: Chaitanya Shinde (231070066)
     """
 
     def __init__(self, problem: ProblemInstance):
@@ -472,7 +643,16 @@ class DestroyOperatorManager:
         self.weights = {name: 1.0 for name in self.operators.keys()}
 
     def select_operator(self) -> str:
-        """Selects a destroy operator based on their adaptive weights using roulette wheel selection."""
+        """
+        Select a destroy operator using roulette wheel selection.
+        
+        Returns:
+            str: The name of the selected operator
+            
+        Note:
+            - Uses roulette wheel selection based on operator weights
+            - Higher weight means higher probability of selection
+        """
         operators = list(self.operators.keys())
         weights = [self.weights[op] for op in operators]
         total_weight = sum(weights)
@@ -486,24 +666,59 @@ class DestroyOperatorManager:
     def apply_operator(
         self, solution: Solution, operator_name: str, removal_count: int
     ) -> Solution:
-        """Applies a specific destroy operator by name."""
+        """
+        Apply a specific destroy operator to a solution.
+        
+        Args:
+            solution: The solution to modify
+            operator_name: Name of the operator to apply
+            removal_count: Number of customers to remove
+            
+        Returns:
+            Solution: A new solution with customers removed
+            
+        Raises:
+            ValueError: If the operator name is not recognized
+        """
         if operator_name not in self.operators:
             raise ValueError(f"Unknown operator: {operator_name}")
 
         operator = self.operators[operator_name]
         return operator.apply(solution, removal_count)
 
-    def update_operator_performance(self, operator_name: str, score: float):
-        """Updates the performance score of a specific operator."""
+    def update_operator_performance(self, operator_name: str, score: float) -> None:
+        """
+        Update the performance score of a specific operator.
+        
+        Args:
+            operator_name: Name of the operator to update
+            score: Performance score (higher is better)
+            
+        Note:
+            - Called by the ALNS algorithm after each iteration
+            - Affects future operator selection probabilities
+        """
         if operator_name in self.operators:
             self.operators[operator_name].update_performance(score)
 
     def get_operator_performance(self) -> Dict[str, float]:
-        """Returns a dictionary of performance scores for all operators."""
+        """
+        Get the performance scores for all operators.
+        
+        Returns:
+            Dict[str, float]: Dictionary mapping operator names to their scores
+        """
         return {name: op.get_performance_score() for name, op in self.operators.items()}
 
-    def update_weights(self):
-        """Updates the weights of all operators based on their recent performance."""
+    def update_weights(self) -> None:
+        """
+        Update the selection weights of all operators.
+        
+        Note:
+            - Weights are updated based on recent performance
+            - Includes a reaction factor to control adaptation speed
+            - Maintains minimum weight to ensure all operators have a chance
+        """
         performances = self.get_operator_performance()
         total_performance = sum(performances.values())
 

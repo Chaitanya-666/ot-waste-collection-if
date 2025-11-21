@@ -1,68 +1,132 @@
-# Author: Chaitanya Shinde (231070066)
-#
-# This file implements the "repair" operators for the ALNS algorithm. These
-# operators take a partial solution (with some customers unassigned) and
-# re-insert the unassigned customers to create a new, complete solution.
-# Different operators use different heuristics to decide where to insert
-# customers.
 """
-Repair operators for VRP with Intermediate Facilities (VRP-IF).
+Repair Operators for Adaptive Large Neighborhood Search (ALNS)
+=============================================================
 
-This module provides a cleaned, consistent implementation of several repair
-operators used by the ALNS solver:
+Author: Harsh Sharma (231070064) - Core algorithm implementation
 
- - GreedyInsertion
- - RegretInsertion (k-regret)
- - IFAwareRepair (ensures IF visits are placed to satisfy capacity)
- - SavingsInsertion (simple Clarke-Wright style merge)
- - RepairOperatorManager (simple adaptive manager)
+This module implements the repair operators for the Adaptive Large Neighborhood
+Search (ALNS) algorithm used to solve the Vehicle Routing Problem with
+Intermediate Facilities (VRP-IF). Repair operators take a partial solution
+(with some customers unassigned) and re-insert the unassigned customers to
+create a new, complete solution.
 
-Notes:
- - The project's Solution tracks `unassigned_customers` as a set of customer
-   IDs (integers). Repair operators operate with Location objects but update
-   the solution's `unassigned_customers` set using IDs.
- - The implementations are defensive: feasibility checks and insertion caps are
-   employed to avoid pathological infinite loops.
+Key Features:
+- Multiple repair strategies with different characteristics
+- Support for intermediate facility (IF) awareness
+- Adaptive operator selection based on performance
+- Defensive programming with feasibility checks
+- Efficient implementation for large problem instances
+
+Classes:
+    - RepairOperator: Base class for all repair operators
+    - GreedyInsertion: Inserts customers at the cheapest position
+    - RegretInsertion: Uses k-regret heuristic for better insertion choices
+    - IFAwareRepair: Ensures IF visits satisfy capacity constraints
+    - SavingsInsertion: Implements Clarke-Wright savings heuristic
+    - RepairOperatorManager: Manages operator selection and application
+
+Note:
+    - The project's Solution tracks `unassigned_customers` as a set of customer
+      IDs (integers). Repair operators operate with Location objects but update
+      the solution's `unassigned_customers` set using IDs.
+    - The implementations include feasibility checks and insertion caps to
+      avoid pathological infinite loops.
 """
 
 from copy import deepcopy
 import random
-from typing import List, Tuple, Optional
+import math
+from typing import List, Tuple, Optional, Dict, Set, Any, Union, Callable
 
 from .solution import Solution, Route
 from .problem import Location, ProblemInstance
 
 
 class RepairOperator:
-    """Base class for all repair operators."""
+    """
+    Abstract base class for all repair operators in the ALNS algorithm.
+    
+    Repair operators take a partial solution (with some customers unassigned)
+    and re-insert the unassigned customers to create a new, complete solution.
+    Different operators use different heuristics to decide where to insert
+    customers.
+    
+    Attributes:
+        name (str): Identifier for the operator
+        performance_score (float): Tracks the operator's performance
+        usage_count (int): Number of times the operator has been used
+        
+    Author: Harsh Sharma (231070064)
+    """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
+        """
+        Initialize a new repair operator.
+        
+        Args:
+            name: Unique identifier for the operator
+        """
         self.name = name
-        # Performance score is used for adaptive weight adjustment.
         self.performance_score = 0.0
         self.usage_count = 0
 
     def apply(self, partial_solution: Solution) -> Solution:
-        """Applies the repair operator to a partial solution, returning a complete one."""
-        raise NotImplementedError
+        """
+        Apply the repair operator to a partial solution.
+        
+        Args:
+            partial_solution: The solution to repair
+            
+        Returns:
+            Solution: A complete solution with all customers assigned
+            
+        Raises:
+            NotImplementedError: If the method is not implemented by a subclass
+        """
+        raise NotImplementedError("Subclasses must implement apply()")
 
     def update_performance(self, score: float) -> None:
-        """Updates the operator's performance score based on a recent run."""
+        """
+        Update the operator's performance score.
+        
+        Args:
+            score: Performance score from the last run (higher is better)
+        """
         self.performance_score += score
         self.usage_count += 1
 
-    def average_score(self) -> float:
-        """Calculates the average performance score of this operator."""
+    def get_performance_score(self) -> float:
+        """
+        Calculate the average performance score of this operator.
+        
+        Returns:
+            float: The average score, or 0 if the operator hasn't been used
+        """
         if self.usage_count == 0:
             return 0.0
         return self.performance_score / self.usage_count
 
 
-# ----------------------
-# Helper utilities
-# ----------------------
+# ==============================================================================
+# Helper Utilities
+# ==============================================================================
+# These functions provide common functionality used by multiple repair operators.
+# They handle route manipulation, feasibility checks, and other low-level operations.
 def calculate_route_distance(route: Route, problem: ProblemInstance) -> float:
-    """Computes the total Euclidean distance of a route."""
+    """
+    Calculate the total Euclidean distance of a route.
+    
+    Args:
+        route: The route to calculate distance for
+        problem: The problem instance containing distance information
+        
+    Returns:
+        float: The total distance of the route
+        
+    Note:
+        - Uses Euclidean distance between consecutive nodes
+        - Includes the return trip to the depot if not already included
+    """
     if not route.nodes or len(route.nodes) < 2:
         return 0.0
     total = 0.0
@@ -73,8 +137,20 @@ def calculate_route_distance(route: Route, problem: ProblemInstance) -> float:
 
 def recalc_loads(route: Route) -> List[float]:
     """
-    Recalculates the cumulative load at each node in a route.
+    Recalculate the cumulative load at each node in a route.
+    
     The load resets to zero after visiting an intermediate facility (IF).
+    
+    Args:
+        route: The route to recalculate loads for
+        
+    Returns:
+        List[float]: A list of cumulative loads at each node position
+        
+    Note:
+        - Load is accumulated from the start of the route
+        - Visiting an IF resets the load to zero
+        - The depot is assumed to have zero demand
     """
     loads: List[float] = []
     current_load = 0.0
@@ -88,7 +164,20 @@ def recalc_loads(route: Route) -> List[float]:
 
 
 def ensure_route_ends_with_depot(route: Route, problem: ProblemInstance) -> None:
-    """Ensures a route starts and ends at the depot (modifies the route in-place)."""
+    """
+    Ensure a route starts and ends at the depot.
+    
+    Modifies the route in-place to ensure it begins and ends at the depot.
+    
+    Args:
+        route: The route to modify
+        problem: The problem instance containing depot information
+        
+    Note:
+        - If the route is empty, initializes it with the depot
+        - If the route doesn't start/end with the depot, adds it
+        - Preserves all intermediate nodes in the route
+    """
     if not route.nodes:
         route.nodes = [problem.depot, problem.depot]
         route.loads = [0.0, 0.0]
@@ -103,7 +192,21 @@ def ensure_route_ends_with_depot(route: Route, problem: ProblemInstance) -> None
 def find_nearest_if(
     problem: ProblemInstance, ref: Optional[Location]
 ) -> Optional[Location]:
-    """Finds the intermediate facility closest to a given reference location."""
+    """
+    Find the intermediate facility (IF) closest to a reference location.
+    
+    Args:
+        problem: The problem instance containing IFs
+        ref: The reference location (or None to use depot)
+        
+    Returns:
+        Optional[Location]: The nearest IF, or None if no IFs exist
+        
+    Note:
+        - If ref is None, uses the depot as the reference point
+        - Returns None if there are no IFs in the problem
+        - Uses Euclidean distance for proximity calculation
+    """
     if not problem.intermediate_facilities:
         return None
     if ref is None:
@@ -122,9 +225,22 @@ def find_nearest_if(
 
 def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
     """
+    Ensure a route has appropriate IF visits to maintain capacity constraints.
+    
     Iterates through a route and inserts intermediate facility (IF) visits
     wherever necessary to prevent vehicle capacity from being exceeded.
-    Returns True on success, False on failure.
+    
+    Args:
+        route: The route to check and modify
+        problem: The problem instance with capacity information
+        
+    Returns:
+        bool: True if successful, False if route is infeasible
+        
+    Note:
+        - Modifies the route in-place by adding IF visits as needed
+        - Returns False if the route is infeasible even with IF visits
+        - Handles both customer and IF nodes in the route
     """
     if not route.nodes:
         return False
@@ -181,7 +297,21 @@ def enforce_if_visits(route: Route, problem: ProblemInstance) -> bool:
 
 
 def route_is_feasible(route: Route, problem: ProblemInstance) -> bool:
-    """Checks if a route is feasible based on vehicle capacity."""
+    """
+    Check if a route is feasible with respect to vehicle capacity.
+    
+    Args:
+        route: The route to check
+        problem: The problem instance with capacity information
+        
+    Returns:
+        bool: True if the route is feasible, False otherwise
+        
+    Note:
+        - Considers both customer demands and vehicle capacity
+        - Takes into account IF visits that reset the load
+        - Does not check time windows or other constraints
+    """
     if not route.nodes:
         return True
     loads = recalc_loads(route)
@@ -193,15 +323,41 @@ def route_is_feasible(route: Route, problem: ProblemInstance) -> bool:
 # ----------------------
 class GreedyInsertion(RepairOperator):
     """
-    Inserts unassigned customers one by one into the position that results
-    in the smallest increase in total cost (distance). This is a simple and
-    fast heuristic.
+    Greedy Insertion Repair Operator
+    
+    Inserts unassigned customers one by one into the position that results in the
+    smallest increase in total cost (distance). This is a simple and fast
+    heuristic that generally produces good solutions quickly.
+    
+    Key Features:
+    - Simple and computationally efficient
+    - Always chooses the locally optimal insertion
+    - Works well for small to medium-sized problems
+    
+    Example:
+        >>> operator = GreedyInsertion()
+        >>> complete_solution = operator.apply(partial_solution)
+        
+    Note:
+        - May get stuck in local optima for complex problems
+        - Performance can degrade if the initial partial solution is poor
+        
+    Author: Harsh Sharma (231070064)
     """
 
     def __init__(self):
         super().__init__("greedy_insertion")
 
     def apply(self, partial_solution: Solution) -> Solution:
+        """
+        Apply the greedy insertion operator to a partial solution.
+        
+        Args:
+            partial_solution: The solution to repair
+            
+        Returns:
+            Solution: A complete solution with all customers assigned
+        """
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
@@ -269,10 +425,31 @@ class GreedyInsertion(RepairOperator):
 
 class RegretInsertion(RepairOperator):
     """
-    Inserts customers based on a "regret" value. The regret is the difference
-    in cost between the best insertion position and the second-best (or k-th best).
-    This prioritizes customers that have fewer good insertion options, which can
-    prevent suboptimal decisions early on.
+    Regret Insertion Repair Operator (k-Regret)
+    
+    Inserts customers based on a "regret" value, which is the difference in cost
+    between the best insertion position and the k-th best position. This helps
+    to prioritize customers that have fewer good insertion options, which can
+    prevent suboptimal decisions early in the repair process.
+    
+    Key Features:
+    - Considers multiple insertion positions (k positions)
+    - Balances immediate cost and future flexibility
+    - More sophisticated than simple greedy insertion
+    
+    Args:
+        k: Number of best positions to consider when calculating regret
+        
+    Example:
+        >>> operator = RegretInsertion(k=2)  # 2-regret insertion
+        >>> complete_solution = operator.apply(partial_solution)
+        
+    Reference:
+        - Ropke, S., & Pisinger, D. (2006). An adaptive large neighborhood
+          search heuristic for the pickup and delivery problem with time windows.
+          Transportation Science, 40(4), 455-472.
+          
+    Author: Harsh Sharma (231070064)
     """
 
     def __init__(self, k: int = 2):
@@ -280,6 +457,15 @@ class RegretInsertion(RepairOperator):
         self.k = max(2, int(k))
 
     def apply(self, partial_solution: Solution) -> Solution:
+        """
+        Apply the regret insertion operator to a partial solution.
+        
+        Args:
+            partial_solution: The solution to repair
+            
+        Returns:
+            Solution: A complete solution with all customers assigned
+        """
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
@@ -363,16 +549,43 @@ class RegretInsertion(RepairOperator):
 
 class IFAwareRepair(RepairOperator):
     """
-    A greedy insertion operator that is aware of intermediate facilities (IFs).
-    When it inserts a customer, it also checks if an IF visit is needed and
-    inserts one if necessary, ensuring the route remains feasible with respect
-    to capacity.
+    Intermediate Facility (IF) Aware Repair Operator
+    
+    A greedy insertion operator that is explicitly aware of intermediate facilities.
+    When inserting a customer, it checks if an IF visit is needed to maintain
+    capacity constraints and inserts one if necessary. This ensures the route
+    remains feasible with respect to vehicle capacity.
+    
+    Key Features:
+    - Explicit handling of intermediate facilities
+    - Maintains solution feasibility during insertion
+    - Prevents capacity violations
+    
+    Example:
+        >>> operator = IFAwareRepair()
+        >>> complete_solution = operator.apply(partial_solution)
+        
+    Note:
+        - More computationally intensive than basic greedy insertion
+        - Essential for problems with strict capacity constraints
+        - May create longer routes due to IF visits
+        
+    Author: Harsh Sharma (231070064)
     """
 
     def __init__(self):
         super().__init__("if_aware_repair")
 
     def apply(self, partial_solution: Solution) -> Solution:
+        """
+        Apply the IF-aware repair operator to a partial solution.
+        
+        Args:
+            partial_solution: The solution to repair
+            
+        Returns:
+            Solution: A complete solution with all customers assigned
+        """
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
@@ -451,15 +664,49 @@ class IFAwareRepair(RepairOperator):
 
 class SavingsInsertion(RepairOperator):
     """
+    Savings Insertion Repair Operator (Clarke-Wright)
+    
     A repair operator based on the Clarke and Wright savings heuristic. It first
     creates a separate route for each unassigned customer and then iteratively
-    merges routes based on the highest "savings" in distance.
+    merges routes based on the highest "savings" in distance. The savings is
+    calculated as the reduction in total distance that would result from merging
+    two routes.
+    
+    Key Features:
+    - Based on the classic Clarke-Wright savings algorithm
+    - Considers global savings rather than just local improvements
+    - Can produce high-quality solutions for certain problem types
+    
+    Example:
+        >>> operator = SavingsInsertion()
+        >>> complete_solution = operator.apply(partial_solution)
+        
+    Reference:
+        - Clarke, G., & Wright, J. W. (1964). Scheduling of vehicles from a
+          central depot to a number of delivery points. Operations Research,
+          12(4), 568-581.
+          
+    Note:
+        - Can be computationally expensive for large numbers of customers
+        - Works best when the initial routes are short
+        - May require tuning of the savings calculation
+        
+    Author: Harsh Sharma (231070064)
     """
 
     def __init__(self):
         super().__init__("savings_insertion")
 
     def apply(self, partial_solution: Solution) -> Solution:
+        """
+        Apply the savings insertion operator to a partial solution.
+        
+        Args:
+            partial_solution: The solution to repair
+            
+        Returns:
+            Solution: A complete solution with all customers assigned
+        """
         sol = deepcopy(partial_solution)
         problem: ProblemInstance = sol.problem
 
@@ -530,9 +777,32 @@ class SavingsInsertion(RepairOperator):
 
 class RepairOperatorManager:
     """
+    Repair Operator Manager
+    
     Manages the selection and adaptive weighting of repair operators. It uses
     a roulette wheel selection mechanism based on the performance of each
-    operator to guide the search.
+    operator to guide the search. The manager tracks the performance of each
+    operator and adjusts their selection probabilities accordingly.
+    
+    Attributes:
+        operators: List of available repair operators
+        weights: Current selection weights for each operator
+        iteration: Current iteration counter
+        learning_period: Number of iterations between weight updates
+        reaction: Controls how quickly weights are adjusted based on performance
+        
+    Example:
+        >>> manager = RepairOperatorManager()
+        >>> operator = manager.select()
+        >>> solution = operator.apply(partial_solution)
+        >>> manager.update()
+        
+    Note:
+        - Uses an adaptive weighting scheme to favor better-performing operators
+        - Includes a learning period to allow operators to establish performance
+        - The reaction factor controls how quickly weights are updated
+        
+    Author: Harsh Sharma (231070064)
     """
 
     def __init__(self):

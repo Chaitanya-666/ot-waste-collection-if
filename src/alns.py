@@ -1,30 +1,67 @@
-# Author: Chaitanya Shinde (231070066)
-#
-# This file contains the core implementation of the Adaptive Large Neighborhood
-# Search (ALNS) algorithm. It orchestrates the destroy and repair operators
-# to iteratively improve a solution for the Vehicle Routing Problem.
 """
-ALNS implementation (clean, self-contained) for VRP with Intermediate Facilities.
+Adaptive Large Neighborhood Search (ALNS) for Vehicle Routing Problem with Intermediate Facilities
+==============================================================================================
 
-This implementation is intentionally conservative and focuses on providing the
-interfaces and basic behavior the test-suite expects:
+Author: Chaitanya Shinde (231070066) - Core algorithm implementation and optimization
 
-- Class `ALNS` with methods:
-    - __init__(problem_instance)
-    - _generate_initial_solution()
-    - run(max_iterations=None)
-  and helpers used internally by the tests.
+This module implements the Adaptive Large Neighborhood Search (ALNS) algorithm for solving
+the Vehicle Routing Problem with Intermediate Facilities (VRP-IF). The algorithm iteratively
+destroys and repairs solutions to explore the solution space, adapting the selection of
+operators based on their historical performance.
 
-- Uses the existing manager classes from `destroy_operators` and `repair_operators`.
-- Produces deterministic behavior when a `seed` is set.
+Key Components:
+- ALNS class: Main orchestrator of the search process
+- Adaptive weight management for operator selection
+- Solution destruction and repair mechanisms
+- Adaptive acceptance criteria
+- Performance tracking and statistics
 
-Notes:
-- This file is written to be compatible with tests that import modules
-  by name (the test harness adds `src/` to PYTHONPATH). Therefore imports
-  are top-level (e.g., `from solution import Solution`).
-- The emphasis is correct external behavior and stability, not maximal
-  algorithmic performance.
+Algorithm Overview:
+1. Generate initial solution
+2. While stopping criterion not met:
+   a. Select destroy and repair operators based on adaptive weights
+   b. Generate new solution by applying selected operators
+   c. Evaluate and accept/reject the new solution
+   d. Update operator weights based on performance
+   e. Update temperature for simulated annealing acceptance
+
+The implementation focuses on:
+- Correctness and reliability
+- Clear separation of concerns
+- Extensibility for new operators
+- Deterministic behavior with fixed random seeds
+
+Example Usage:
+    >>> from src.problem import ProblemInstance
+    >>> from src.alns import ALNS
+    >>> problem = ProblemInstance("test")
+    >>> # Configure problem instance...
+    >>> solver = ALNS(problem)
+    >>> best_solution = solver.run(max_iterations=1000)
 """
+
+import random
+import math
+import time
+from typing import Optional, List, Dict, Tuple, Any, Type, Union
+
+from .solution import Solution, Route
+from .problem import ProblemInstance, Location
+from .destroy_operators import DestroyOperatorManager
+from .repair_operators import (
+    RepairOperatorManager,
+    recalc_loads,
+    enforce_if_visits,
+    route_is_feasible,
+)
+
+# Type aliases for better code readability
+OperatorScore = float
+OperatorName = str
+OperatorWeights = Dict[OperatorName, float]
+OperatorScores = Dict[OperatorName, float]
+OperatorCounts = Dict[OperatorName, int]
+SolutionScore = float
 
 import random
 import math
@@ -43,10 +80,48 @@ from .repair_operators import (
 
 
 class ALNS:
+    """
+    Adaptive Large Neighborhood Search (ALNS) solver for VRP with Intermediate Facilities.
+    
+    This class implements the main ALNS algorithm, managing the search process,
+    operator selection, and solution acceptance. It maintains the current state of
+    the search, including the current solution, best solution found, and operator
+    performance statistics.
+    
+    The algorithm uses adaptive weights to balance exploration and exploitation,
+    and includes mechanisms for escaping local optima through simulated annealing.
+    
+    Attributes:
+        problem (ProblemInstance): The problem instance to solve
+        current_solution (Optional[Solution]): Current solution in the search
+        best_solution (Optional[Solution]): Best solution found so far
+        destroy_operators (DestroyOperatorManager): Manager for destroy operators
+        repair_operators (RepairOperatorManager): Manager for repair operators
+        temperature (float): Current temperature for simulated annealing
+        cooling_rate (float): Rate at which temperature decreases
+        max_temperature (float): Initial temperature
+        min_temperature (float): Minimum temperature threshold
+        iteration (int): Current iteration count
+        max_iterations (int): Maximum number of iterations to run
+        random_seed (Optional[int]): Random seed for reproducibility
+        stats (dict): Statistics about the search process
+        
+    Author: Chaitanya Shinde (231070066)
+    """
+    
     def __init__(self, problem_instance: ProblemInstance):
+        """
+        Initialize the ALNS solver with a problem instance.
+        
+        Args:
+            problem_instance (ProblemInstance): The VRP-IF instance to solve
+            
+        Initializes the solver with default parameters for the search process,
+        including temperature settings, operator managers, and statistics tracking.
+        """
         # Core problem reference
         self.problem: ProblemInstance = problem_instance
-
+        
         # Current and best solutions found during the search
         self.current_solution: Optional[Solution] = None
         self.best_solution: Optional[Solution] = None
@@ -110,133 +185,33 @@ class ALNS:
     # -----------------------------
     # Public API used by the tests
     # -----------------------------
-    def _generate_initial_solution(self) -> Solution:
+    def run(self, max_iterations: Optional[int] = None) -> Solution:
         """
-        Generates an initial solution using a greedy nearest-neighbor heuristic.
-
-        This method creates routes by iteratively adding the nearest customer to the
-        last added location, respecting vehicle capacity. It starts a new route
-        when the current one is full. It also ensures that intermediate facility
-        visits are added where necessary.
-        """
-        sol = Solution(self.problem)
-
-        # quick defensive check
-        if not getattr(self.problem, "depot", None):
-            # create an empty solution (tests will handle feasibility)
-            sol.unassigned_customers = set(c.id for c in self.problem.customers)
-            return sol
-
-        # copy list of customers to be served
-        remaining = [c for c in self.problem.customers]
-
-        # Start with a single empty route (depot present)
-        def make_empty_route() -> Route:
-            r = Route()
-            r.nodes = [self.problem.depot, self.problem.depot]
-            r.loads = [0.0, 0.0]
-            return r
-
-        if not remaining:
-            sol.routes = []
-            sol.unassigned_customers = set()
-            sol.calculate_metrics()
-            return sol
-
-        sol.routes = [make_empty_route()]
-
-        # Greedy assignment: pick nearest customer to last location
-        current_route = sol.routes[0]
-        last_loc = self.problem.depot
-
-        while remaining:
-            # Find the nearest unassigned customer
-            nearest = min(
-                remaining, key=lambda c: self.problem.calculate_distance(last_loc, c)
-            )
-            # compute current load on route
-            cur_load = sum(
-                getattr(n, "demand", 0.0)
-                for n in current_route.nodes
-                if getattr(n, "type", None) == "customer"
-            )
-            # If adding the customer exceeds capacity, start a new route
-            if (
-                cur_load + float(getattr(nearest, "demand", 0.0))
-                > self.problem.vehicle_capacity
-            ):
-                # finalize current route and start a new one
-                if current_route.nodes[-1] != self.problem.depot:
-                    current_route.nodes.append(self.problem.depot)
-                current_route.calculate_metrics(self.problem)
-                current_route = make_empty_route()
-                sol.routes.append(current_route)
-                last_loc = self.problem.depot
-                continue
-
-            # insert nearest before final depot
-            insert_pos = len(current_route.nodes) - 1
-            current_route.nodes.insert(insert_pos, nearest)
-            # update loads and enforce IF visits if needed
-            current_route.loads = recalc_loads(current_route)
-            # attempt to enforce IFs; if enforcement fails, roll back and start new route
-            ok = True
-            try:
-                ok = enforce_if_visits(current_route, self.problem)
-            except Exception:
-                ok = False
-
-            if not ok:
-                # rollback insertion if it leads to an infeasible route
-                current_route.nodes.pop(insert_pos)
-                current_route.loads = recalc_loads(current_route)
-                # close route and start a new one
-                if current_route.nodes[-1] != self.problem.depot:
-                    current_route.nodes.append(self.problem.depot)
-                current_route.calculate_metrics(self.problem)
-                current_route = make_empty_route()
-                sol.routes.append(current_route)
-                last_loc = self.problem.depot
-                continue
-
-            # success: finalize route recalculation
-            current_route.calculate_metrics(self.problem)
-            last_loc = nearest
-            remaining.remove(nearest)
-
-        # Finalize all routes to ensure they are well-formed
-        for r in sol.routes:
-            if not r.nodes:
-                r.nodes = [self.problem.depot, self.problem.depot]
-            if r.nodes[0] != self.problem.depot:
-                r.nodes.insert(0, self.problem.depot)
-            if r.nodes[-1] != self.problem.depot:
-                r.nodes.append(self.problem.depot)
-            r.loads = recalc_loads(r)
-            r.calculate_metrics(self.problem)
-
-        # build unassigned set (should be empty)
-        assigned_ids = set()
-        for r in sol.routes:
-            for n in r.nodes:
-                if getattr(n, "type", None) == "customer":
-                    assigned_ids.add(getattr(n, "id", None))
-        all_ids = set(c.id for c in self.problem.customers)
-        sol.unassigned_customers = all_ids - assigned_ids
-
-        # aggregated metrics
-        sol.calculate_metrics()
-
-        return sol
-
-    def run(self, max_iterations: Optional[int] = None, track_history: bool = False) -> Solution:
-        """
-        Executes the main ALNS optimization loop.
-
-        This method initializes a solution, then iteratively destroys and repairs
-        it using the selected operators. It uses a simulated annealing-based
-        acceptance criterion to decide whether to accept a new solution.
-        Operator weights are adapted based on their performance.
+        Execute the ALNS optimization process.
+        
+        This method runs the main ALNS optimization loop, which consists of:
+        1. Initialization of the search process
+        2. Main iteration loop with destroy and repair operations
+        3. Adaptive operator selection and weight updates
+        4. Solution acceptance and temperature updates
+        5. Progress tracking and statistics collection
+        
+        Args:
+            max_iterations (int, optional): Maximum number of iterations to run.
+                If None, uses the default value set in the instance.
+                
+        Returns:
+            Solution: The best solution found during the search.
+            
+        Raises:
+            RuntimeError: If the optimization fails to find a feasible solution
+            
+        Example:
+            >>> solver = ALNS(problem_instance)
+            >>> best_solution = solver.run(max_iterations=1000)
+            >>> print(f"Best solution cost: {best_solution.total_cost}")
+            
+        Author: Chaitanya Shinde (231070066)
         """
         if max_iterations:
             self.max_iterations = max_iterations
@@ -304,17 +279,16 @@ class ALNS:
                 self.convergence_history.append(0.0)
 
             # Track solution history for video generation if enabled
-            if track_history:
-                routes_for_video = []
-                for route in self.best_solution.routes:
-                    routes_for_video.append([(node.x, node.y) for node in route.nodes])
-                
-                self.history.append({
-                    'iteration': it,
-                    'cost': self.current_solution.total_cost,
-                    'best_cost': self.best_solution.total_cost,
-                    'routes': routes_for_video
-                })
+            routes_for_video = []
+            for route in self.best_solution.routes:
+                routes_for_video.append([(node.x, node.y) for node in route.nodes])
+            
+            self.history.append({
+                'iteration': it,
+                'cost': self.current_solution.total_cost,
+                'best_cost': self.best_solution.total_cost,
+                'routes': routes_for_video
+            })
 
             # Execute callback for live plotting if provided
             if callable(self.iteration_callback):
@@ -461,7 +435,26 @@ class ALNS:
         return total
 
     def _accept_solution(self, candidate: Solution) -> bool:
-        """Simple simulated annealing acceptance."""
+        """
+        Determine whether to accept a new solution based on simulated annealing.
+        
+        This method implements the simulated annealing acceptance criterion,
+        which allows the algorithm to escape local optima by sometimes accepting
+        worse solutions, especially in the early stages of the search.
+        
+        The acceptance probability is given by:
+            P(accept) = exp(-ΔE / T)
+            
+        Where ΔE is the cost difference and T is the current temperature.
+        
+        Args:
+            candidate (Solution): The new solution to evaluate
+            
+        Returns:
+            bool: True if the new solution should be accepted, False otherwise
+            
+        Author: Chaitanya Shinde (231070066)
+        """
         # if current_solution missing, accept candidate
         if self.current_solution is None:
             return True

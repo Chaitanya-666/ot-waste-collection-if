@@ -1,27 +1,47 @@
-# Author: Harsh Sharma (231070064)
-#
-# This file is responsible for generating synthetic data for problem instances.
-# It allows for the creation of diverse and reproducible scenarios for testing,
-# benchmarking, and demonstration purposes.
 """
-Synthetic data generation for waste collection problems
+Data Generation for Vehicle Routing Problem with Intermediate Facilities (VRP-IF)
+==============================================================================
 
-This module provides comprehensive data generation capabilities for:
-- Creating synthetic problem instances with various characteristics
-- Loading instances from configuration files
-- Generating benchmark instances for testing
-- Creating edge cases and stress test scenarios
+Author: Harsh Sharma (231070064) - Data generation and instance management
+
+This module provides comprehensive data generation capabilities for the VRP-IF,
+including creation of synthetic problem instances, loading/saving instances,
+and generating test cases for benchmarking and validation.
+
+Key Features:
+- Generate synthetic problem instances with configurable parameters
+- Create clustered or uniformly distributed customer locations
+- Save and load problem instances to/from JSON files
+- Generate benchmark suites and edge cases for testing
+- Support for reproducible random generation with seed values
 """
 
 import json
 import random
 import math
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any, Union
+from pathlib import Path
+
 from .problem import ProblemInstance, Location
 
 
 class DataGenerator:
-    """A collection of static methods to generate synthetic problem instances."""
+    """
+    A utility class for generating synthetic VRP-IF problem instances.
+    
+    This class provides static methods to create problem instances with various
+    characteristics, including different customer distributions, facility locations,
+    and problem constraints. It supports both programmatic generation and
+    configuration-based instance creation.
+    
+    The generator can create:
+    - Random instances with uniform or clustered customer distributions
+    - Benchmark instances of varying sizes and complexities
+    - Edge cases for testing algorithm robustness
+    - Instances from configuration files for reproducible testing
+    
+    Author: Harsh Sharma (231070064)
+    """
 
     @staticmethod
     def generate_instance(
@@ -37,25 +57,49 @@ class DataGenerator:
         depot_position: str = "center",
     ) -> ProblemInstance:
         """
-        Generates a complete, synthetic problem instance with specified characteristics.
+        Generate a complete, synthetic VRP-IF problem instance.
+        
+        This method creates a problem instance with the specified number of customers
+        and intermediate facilities, distributed according to the given parameters.
+        The instance includes all necessary attributes for solving the VRP-IF.
 
         Args:
-            name: The name for the problem instance.
-            n_customers: The number of customer locations to generate.
-            n_ifs: The number of intermediate facilities to generate.
-            vehicle_capacity: The capacity for each vehicle.
-            area_size: The size of the square area (e.g., 100x100).
-            demand_range: The (min, max) range for customer demands.
-            service_time_range: The (min, max) range for customer service times.
-            seed: A random seed for reproducibility.
-            cluster_factor: A value from 0.0 (uniform) to 1.0 (highly clustered)
-                            that controls customer distribution. A higher value
-                            means customers are more likely to be grouped together.
-            depot_position: The position of the depot ('center', 'corner', or 'random').
-                            This affects the overall structure of the routes.
+            name: A descriptive name for the problem instance.
+            n_customers: Number of customer locations to generate (≥ 0).
+            n_ifs: Number of intermediate facilities to generate (≥ 1).
+            vehicle_capacity: Maximum capacity of each vehicle (default: 20).
+            area_size: Size of the square area for locations (default: 100).
+            demand_range: Tuple of (min, max) demand for customers (default: (1, 10)).
+            service_time_range: Tuple of (min, max) service times (default: (1, 5)).
+            seed: Random seed for reproducibility (default: None).
+            cluster_factor: Controls customer clustering (0.0 = uniform, 1.0 = highly clustered).
+            depot_position: Position of depot ('center', 'corner', or 'random').
 
         Returns:
-            A fully initialized ProblemInstance object.
+            ProblemInstance: A fully initialized problem instance.
+            
+        Raises:
+            ValueError: If input parameters are invalid.
+            
+        Example:
+            >>> instance = DataGenerator.generate_instance(
+            ...     name="Test1",
+            ...     n_customers=10,
+            ...     n_ifs=2,
+            ...     vehicle_capacity=25,
+            ...     seed=42
+            ... )
+            >>> len(instance.customers)
+            10
+            
+        Note:
+            - Customers are assigned random demands within the specified range
+            - Service times are randomly assigned within the given range
+            - The depot is always assigned ID 0
+            - Customer IDs start from 1
+            - IF IDs start from 1000
+            
+        Author: Harsh Sharma (231070064)
         """
         if seed is not None:
             random.seed(seed)
@@ -128,7 +172,28 @@ class DataGenerator:
     def _generate_clusters(
         n_points: int, area_size: int, cluster_factor: float, seed: Optional[int]
     ) -> List[Tuple[float, float]]:
-        """Generates coordinates for customers, potentially grouped into clusters."""
+        """
+        Generate coordinates for points with optional clustering.
+        
+        This internal method creates point coordinates that are either:
+        - Uniformly distributed (when cluster_factor = 0)
+        - Clustered around random centers (when cluster_factor > 0)
+        
+        Args:
+            n_points: Number of points to generate.
+            area_size: Size of the square area.
+            cluster_factor: Controls clustering (0.0 to 1.0).
+            seed: Random seed for reproducibility.
+            
+        Returns:
+            List of (x, y) coordinate tuples.
+            
+        Note:
+            - Higher cluster_factor creates more tightly grouped points
+            - Points are constrained to be within the area bounds
+            
+        Author: Harsh Sharma (231070064)
+        """
         if seed is not None:
             random.seed(seed)
 
@@ -169,10 +234,43 @@ class DataGenerator:
         return points
 
     @staticmethod
-    def generate_instances_from_file(filename: str) -> List[ProblemInstance]:
+    def generate_instances_from_file(filename: Union[str, Path]) -> List[ProblemInstance]:
         """
-        Generates a list of problem instances from a JSON configuration file.
-        This allows for easy definition and reproduction of multiple test scenarios.
+        Generate problem instances from a JSON configuration file.
+        
+        The configuration file should be a JSON file containing a list of instance
+        definitions, each with parameters matching the `generate_instance` method.
+        
+        Args:
+            filename: Path to the JSON configuration file.
+            
+        Returns:
+            List of generated ProblemInstance objects.
+            
+        Example config.json:
+            {
+                "instances": [
+                    {
+                        "name": "Small Instance",
+                        "customers": 10,
+                        "ifs": 2,
+                        "capacity": 20,
+                        "area_size": 100,
+                        "demand_range": [1, 10],
+                        "service_time_range": [1, 5],
+                        "cluster_factor": 0.3,
+                        "depot_position": "center",
+                        "seed": 42
+                    },
+                    ...
+                ]
+            }
+            
+        Note:
+            - If the file is not found, returns a list with a single default instance
+            - All parameters except 'name' are optional and have default values
+            
+        Author: Harsh Sharma (231070064)
         """
         instances = []
 
@@ -207,8 +305,20 @@ class DataGenerator:
         return instances
 
     @staticmethod
-    def create_config_template(filename: str = "instances_config.json"):
-        """Creates a template JSON file for defining multiple problem instances."""
+    def create_config_template(filename: Union[str, Path] = "instances_config.json") -> None:
+        """
+        Create a template configuration file for generating problem instances.
+        
+        Args:
+            filename: Path where the template file will be saved.
+            
+        Note:
+            - Creates a JSON file with example instance configurations
+            - The template includes both small and medium-sized instances
+            - Users can modify this file to create custom instance sets
+            
+        Author: Harsh Sharma (231070064)
+        """
         template = {
             "instances": [
                 {
@@ -245,7 +355,24 @@ class DataGenerator:
 
     @staticmethod
     def generate_edge_cases() -> List[ProblemInstance]:
-        """Generates a list of edge-case problem instances for stress testing the solver."""
+        """
+        Generate a set of edge-case problem instances for testing.
+        
+        These instances are designed to test the robustness of the solver
+        by including challenging scenarios such as:
+        - Single customer instances
+        - Customers with very high demand
+        - Many intermediate facilities relative to customers
+        
+        Returns:
+            List of ProblemInstance objects representing various edge cases.
+            
+        Note:
+            - Each instance has a descriptive name indicating its purpose
+            - Fixed random seeds ensure reproducibility
+            
+        Author: Harsh Sharma (231070064)
+        """
         instances = []
 
         # Case 1: A single customer.
@@ -278,7 +405,23 @@ class DataGenerator:
 
     @staticmethod
     def generate_benchmark_suite() -> List[ProblemInstance]:
-        """Generates a comprehensive suite of instances for benchmarking purposes."""
+        """
+        Generate a standardized set of instances for benchmarking.
+        
+        The benchmark suite includes:
+        - Small instances: 6-15 customers, 1-2 IFs
+        - Medium instances: 20-40 customers, 2-3 IFs
+        
+        Returns:
+            List of ProblemInstance objects for benchmarking.
+            
+        Note:
+            - Instance names follow the pattern: "{Size}_{N}C_{M}IF"
+            - Fixed random seeds ensure consistent generation
+            - Vehicle capacity scales with instance size
+            
+        Author: Harsh Sharma (231070064)
+        """
         instances = []
 
         # Small instances
@@ -310,8 +453,26 @@ class DataGenerator:
         return instances
 
     @staticmethod
-    def save_instance_to_file(instance: ProblemInstance, filename: str):
-        """Saves a problem instance to a JSON file for persistence and sharing."""
+    def save_instance_to_file(instance: ProblemInstance, filename: Union[str, Path]) -> None:
+        """
+        Save a problem instance to a JSON file.
+        
+        The saved file includes all instance data, including:
+        - Instance metadata (name, creation time, parameters)
+        - Depot, customer, and IF locations
+        - Distance matrix (if available)
+        
+        Args:
+            instance: The ProblemInstance to save.
+            filename: Path where the instance will be saved.
+            
+        Note:
+            - Uses JSON format for portability
+            - Includes a timestamp in the metadata
+            - The distance matrix is included if it has been computed
+            
+        Author: Harsh Sharma (231070064)
+        """
         import json
         from datetime import datetime
 
@@ -362,8 +523,27 @@ class DataGenerator:
         print(f"Instance saved to: {filename}")
 
     @staticmethod
-    def load_instance_from_file(filename: str) -> ProblemInstance:
-        """Loads a problem instance from a JSON file."""
+    def load_instance_from_file(filename: Union[str, Path]) -> ProblemInstance:
+        """
+        Load a problem instance from a JSON file.
+        
+        Args:
+            filename: Path to the JSON file containing the instance data.
+            
+        Returns:
+            ProblemInstance: The loaded problem instance.
+            
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+            json.JSONDecodeError: If the file contains invalid JSON.
+            KeyError: If required fields are missing from the file.
+            
+        Note:
+            - Restores all instance attributes, including the distance matrix
+            - Handles both numpy arrays and nested lists for the distance matrix
+            
+        Author: Harsh Sharma (231070064)
+        """
         import json
 
         with open(filename, "r") as f:
