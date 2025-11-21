@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Author: Harsh Sharma (231070064)
 #
 # This file contains the comprehensive test suite for the entire project.
@@ -5,7 +6,6 @@
 # components, including the data structures, ALNS algorithm, operators,
 # and utilities. The tests are organized into classes, each focusing on a
 # specific part of the system.
-#!/usr/bin/env python3
 """
 Comprehensive test suite for the ALNS VRP-IF project
 
@@ -20,26 +20,20 @@ This test suite covers:
 
 All tests use proper import paths relative to the project root.
 """
-
-import unittest
 import sys
 import os
-import tempfile
-import json
-from unittest.mock import patch, MagicMock
-import time
-
-# Add the project root directory to the path to allow absolute imports from src
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Import all necessary components from the source code
-from src.problem import ProblemInstance, Location
-from src.solution import Solution, Route
+import unittest
+from unittest.mock import patch
+
 from src.alns import ALNS
-from src.destroy_operators import *
-from src.repair_operators import *
 from src.data_generator import DataGenerator
-from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_file
+from src.destroy_operators import RandomRemoval
+from src.problem import ProblemInstance, Location
+from src.repair_operators import GreedyInsertion
+from src.solution import Solution, Route
+from src.utils import RouteVisualizer, PerformanceAnalyzer
 
 
 class TestProblemInstance(unittest.TestCase):
@@ -58,7 +52,7 @@ class TestProblemInstance(unittest.TestCase):
         self.problem.calculate_distance_matrix()
 
     def test_problem_creation(self):
-        """Test that a problem instance is created with the correct attributes."""
+        """Test that a problem instance is created with correct attributes."""
         self.assertEqual(self.problem.name, "Test Instance")
         self.assertEqual(len(self.problem.customers), 1)
 
@@ -84,7 +78,7 @@ class TestSolution(unittest.TestCase):
         self.problem.calculate_distance_matrix()
 
     def test_solution_creation(self):
-        """Test that a new solution correctly initializes with unassigned customers."""
+        """Test that a new solution correctly initializes."""
         solution = Solution(self.problem)
         self.assertEqual(len(solution.unassigned_customers), 1)
 
@@ -104,7 +98,7 @@ class TestDestroyOperators(unittest.TestCase):
     """Tests for the different destroy operators."""
 
     def setUp(self):
-        """Create a feasible solution to be used as input for destroy operators."""
+        """Create a feasible solution for destroy operators."""
         self.problem = DataGenerator.generate_instance("Test", 10, 2, seed=42)
         solver = ALNS(self.problem)
         self.initial_solution = solver._generate_initial_solution()
@@ -114,18 +108,20 @@ class TestDestroyOperators(unittest.TestCase):
         operator = RandomRemoval()
         removal_count = 3
         partial_solution = operator.apply(self.initial_solution, removal_count)
-        self.assertEqual(len(partial_solution.unassigned_customers), removal_count)
+        self.assertEqual(len(partial_solution.unassigned_customers),
+                         removal_count)
 
 
 class TestRepairOperators(unittest.TestCase):
     """Tests for the different repair operators."""
 
     def setUp(self):
-        """Create a partial solution to be used as input for repair operators."""
+        """Create a partial solution for repair operators."""
         self.problem = DataGenerator.generate_instance("Test", 10, 2, seed=42)
         self.partial_solution = Solution(self.problem)
-        # Manually create a partial solution by leaving some customers unassigned
-        self.partial_solution.unassigned_customers = {c.id for c in self.problem.customers[:3]}
+        # Manually create a partial solution
+        unassigned = {c.id for c in self.problem.customers[:3]}
+        self.partial_solution.unassigned_customers = unassigned
 
     def test_greedy_insertion(self):
         """Test that greedy insertion re-inserts all unassigned customers."""
@@ -155,7 +151,7 @@ class TestDataGenerator(unittest.TestCase):
     """Tests for the synthetic data generation."""
 
     def test_generate_instance(self):
-        """Test that instance generation creates the correct number of entities."""
+        """Test that instance generation creates correct number of entities."""
         instance = DataGenerator.generate_instance("Test", 10, 2, seed=42)
         self.assertEqual(len(instance.customers), 10)
         self.assertEqual(len(instance.intermediate_facilities), 2)
@@ -177,7 +173,7 @@ class TestUtilities(unittest.TestCase):
         self.solution = solver.run(max_iterations=10)
 
     def test_performance_analyzer(self):
-        """Test that the performance analyzer returns a valid analysis dictionary."""
+        """Test that the performance analyzer returns a valid dictionary."""
         analyzer = PerformanceAnalyzer(self.problem)
         analysis = analyzer.analyze_solution(self.solution)
         self.assertIn("total_cost", analysis)
@@ -199,7 +195,8 @@ class TestIntegration(unittest.TestCase):
         Tests the entire workflow: generate instance, solve with ALNS,
         and analyze the result.
         """
-        problem = DataGenerator.generate_instance("Integration Test", 15, 2, seed=2001)
+        problem = DataGenerator.generate_instance("Integration Test", 15, 2,
+                                                  seed=2001)
         solver = ALNS(problem)
         solver.max_iterations = 100
         solution = solver.run()
