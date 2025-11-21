@@ -35,18 +35,10 @@ from src.utils import RouteVisualizer, PerformanceAnalyzer, save_solution_to_fil
 
 # Video creation imports (if available)
 try:
-    # Try importing from workspace root first, then current directory
-    import sys
-    import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from simple_video_creator import SimpleVideoCreator
+    from scripts.simple_video_creator import SimpleVideoCreator
     VIDEO_CREATOR_AVAILABLE = True
 except ImportError:
-    try:
-        from simple_video_creator import SimpleVideoCreator
-        VIDEO_CREATOR_AVAILABLE = True
-    except ImportError:
-        VIDEO_CREATOR_AVAILABLE = False
+    VIDEO_CREATOR_AVAILABLE = False
 
 
 class OptimizationVideoTracker:

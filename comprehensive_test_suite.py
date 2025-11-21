@@ -16,11 +16,8 @@ import os
 import time
 from pathlib import Path
 
-# Correctly add the project root directory to the Python path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from test_report_logger import test_report_logger
-from simple_video_creator import SimpleVideoCreator
+from scripts.test_report_logger import test_report_logger
+from scripts.simple_video_creator import SimpleVideoCreator
 from src.data_generator import DataGenerator
 from src.alns import ALNS
 
