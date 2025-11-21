@@ -1,9 +1,8 @@
-# Author: Chaitanya Shinde (231070066)
+# Author: Harsh Sharma (231070064)
 #
-# This file is responsible for generating synthetic problem instances for the VRP.
-# It allows for the creation of diverse scenarios with different numbers of
-# customers, facilities, and geographical distributions, which is essential
-# for robust testing and benchmarking of the ALNS algorithm.
+# This file is responsible for generating synthetic data for problem instances.
+# It allows for the creation of diverse and reproducible scenarios for testing,
+# benchmarking, and demonstration purposes.
 """
 Synthetic data generation for waste collection problems
 

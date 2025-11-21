@@ -1,9 +1,8 @@
-# Author: Harsh Sharma (231070064)
+# Author: Chaitanya Shinde (231070066)
 #
-# This file serves as the main entry point for the application. It provides a
-# command-line interface (CLI) for users to interact with the VRP solver.
-# It handles argument parsing, orchestrates the different modules (data generation,
-# solving, visualization), and provides several demonstration modes.
+# This file is the main entry point of the application. It handles command-line
+# argument parsing and orchestrates the different modes of operation, such as
+# running demonstrations or benchmarks.
 #!/usr/bin/env python3
 """
 OT Project: Municipal Waste Collection Modelling with Intermediate Facilities
